@@ -1,17 +1,18 @@
 """Export Google's exact text encoder, mean pooling and 256d normalized output."""
 import json, os, pathlib, shutil
 import torch
-from sentence_transformers import SentenceTransformer
+from transformers import AutoModel, AutoTokenizer
 from onnxruntime.quantization import quantize_dynamic, QuantType
 import truststore
 truststore.inject_into_ssl()
 output=pathlib.Path(os.environ.get('CARCROW_ONNX_OUTPUT',str(pathlib.Path.cwd()/'models/embeddinggemma-2')))
 output.mkdir(parents=True,exist_ok=True)
-model=SentenceTransformer('google/embeddinggemma-2',config_kwargs={'vision_config':None,'audio_config':None},model_kwargs={'dtype':torch.float32,'attn_implementation':'eager'},device='cpu',cache_folder=os.environ.get('CARCROW_MODEL_CACHE'))
+model=AutoModel.from_pretrained('google/embeddinggemma-2',vision_config=None,audio_config=None,dtype=torch.float32,attn_implementation='eager',cache_dir=os.environ.get('CARCROW_MODEL_CACHE')).eval()
+tokenizer=AutoTokenizer.from_pretrained('google/embeddinggemma-2',cache_dir=os.environ.get('CARCROW_MODEL_CACHE'))
 torch.set_num_threads(4)
 class Encoder(torch.nn.Module):
  def __init__(self):
-  super().__init__();self.encoder=model[0].auto_model.language_model
+  super().__init__();self.encoder=model.language_model
  def forward(self,input_ids,attention_mask):
   batch,length=input_ids.shape
   mask=(1.0-attention_mask[:,None,None,:].float())*torch.finfo(torch.float32).min
@@ -20,7 +21,7 @@ class Encoder(torch.nn.Module):
   features=self.encoder(input_ids=input_ids,attention_mask={'full_attention':mask,'sliding_attention':mask},position_ids=positions,return_dict=True).last_hidden_state
   pooled=(features*attention_mask.unsqueeze(-1)).sum(1)/attention_mask.sum(1,keepdim=True).clamp(min=1)
   return torch.nn.functional.normalize(pooled[:,:256],p=2,dim=-1)
-encoder=Encoder().eval();sample=model.tokenize(['title: none | text: BMW 320d diesel automat 2017.'])
+encoder=Encoder().eval();sample=tokenizer(['title: none | text: BMW 320d diesel automat 2017.'],padding=True,truncation=True,max_length=256,return_tensors='pt')
 ids,mask=sample['input_ids'],sample['attention_mask']
 print('Exporting the text encoder',flush=True)
 with torch.inference_mode():
@@ -39,7 +40,7 @@ actual=session.run(None,{'input_ids':ids.numpy(),'attention_mask':mask.numpy()})
 sim=float(np.dot(expected[0],actual[0])/(np.linalg.norm(expected[0])*np.linalg.norm(actual[0])))
 assert sim>.98,sim
 print(json.dumps({'model':'google/embeddinggemma-2','cosineAgreement':sim,'bytes':(output/'model.onnx').stat().st_size}),flush=True)
-model[0].tokenizer.save_pretrained(str(output))
+tokenizer.save_pretrained(str(output))
 (output/'manifest.json').write_text(json.dumps({'model':'google/embeddinggemma-2','dimensions':256,'maxTokens':256,'promptQuery':'task: search result | query: ','promptDocument':'title: none | text: ','license':'Apache-2.0','quantization':'int8','cosineAgreement':sim},indent=2))
 
 import urllib.request
