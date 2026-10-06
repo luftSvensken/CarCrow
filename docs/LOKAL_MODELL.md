@@ -1,12 +1,14 @@
 # Lokal rekommendationsmodell
 
-CarCrow 0.3 använder den verkliga textencodern i [Google EmbeddingGemma 2](https://huggingface.co/google/embeddinggemma-2), med modellens officiella query/document-prompter, medelpoolning, 256 dimensioner och normalisering. Rekommendationer räknas med kosinuslikhet mot sparade bilar eller senaste sökningar. Int8-vikter och högst 256 token gör modellen praktisk att paketera. Den kvantiserade exporten har jämförts med originalmodellen; överensstämmelsen var 0,988–0,992 i tre svenska testtexter.
+CarCrow 0.3 använder den verkliga textencodern i [Google EmbeddingGemma 2](https://huggingface.co/google/embeddinggemma-2), med modellens officiella query/document-prompter, medelpoolning, 256 dimensioner och normalisering. Rekommendationer räknas med kosinuslikhet mot sparade bilar eller senaste sökningar. Int8-vikter och högst 256 token gör modellen praktisk att paketera.
+
+Mac-paketen använder den verifierade int8-exporten med 0,988–0,992 i kosinusöverensstämmelse mot originalet för tre svenska testtexter. Windows använder int8 med reducerat viktintervall, enligt [ONNX Runtimes råd för AVX2-processorer](https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html). Den exporten måste nå över 0,98 mot originalmodellen och klara ett svenskt rangordningstest innan den får paketeras. Modellernas manifest, filfingeravtryck och gränssnittstester finns i leveransens CarCrow-Testbevis.
 
 Appen kör ONNX på CPU i en separat Node-arbetstråd. Ingen Python-installation, modellnedladdning eller molninferens behövs efter installation. Modellfiler och Apache 2.0-licens följer med installationspaketen.
 
 ## Återskapa modellfilerna
 
-Använd Python 3.12 på en stödd utvecklarmaskin (Apple Silicon, Windows x64 eller Linux x64). Export kräver flera GB ledigt utrymme och minne. Färdig export kan användas på både Apple Silicon och Intel-Mac, samt Windows x64.
+Använd Python 3.12 på en stödd utvecklarmaskin (Apple Silicon, Windows x64 eller Linux x64). Export kräver flera GB ledigt utrymme och minne. Exportskriptet använder det reducerade viktintervallet för portabel CPU-inferens. De levererade Mac-apparna behåller sin separat verifierade int8-export.
 
 ```sh
 python -m pip install -r scripts/requirements-model.txt

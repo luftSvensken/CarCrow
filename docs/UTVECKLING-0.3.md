@@ -1,6 +1,6 @@
 # CarCrow 0.3 – aktuell utveckling
 
-Krav som ska verifieras i den riktiga skrivbordsappen innan leverans:
+Genomförda ändringar i CarCrow 0.3:
 
 - Enhetlig placering, centrerade knappar och ett korrekt linjerat textfält.
 - Mjuka övergångar och strömmande text; animerad fågel som enda arbetsindikator i chatten. Respektera minskad rörelse.
@@ -18,4 +18,4 @@ Krav som ska verifieras i den riktiga skrivbordsappen innan leverans:
 - AI svarar på svenska, precist och kort, enbart från verkligt annonsunderlag.
 - Bygg och relevanta data-/gränssnittstester på Mac och Windows; privata nycklar lämnar aldrig lokal privat paketering.
 
-Status: pågående. Tidigare verifieringsrapporter avser 0.2 och bevisar inte dessa krav.
+Status: klar. Apple Silicon, Intel via Rosetta, det privata live-testet och Windows x64 med faktisk installation är godkända. Se VERIFIERING.md och leveransens CarCrow-Testbevis för aktuella rapporter.

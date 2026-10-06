@@ -1,31 +1,21 @@
-# Verifiering av CarCrow 0.2.0
+# Verifiering av CarCrow 0.3
 
-6 oktober 2026. Rapporten skiljer tester av källkod, riktiga nätanrop och körning av leveranspaket.
+Kontrollerad 6 oktober 2026. Rapporter och bilder finns i leveransens `CarCrow-Testbevis`.
 
-| Kontroll | Resultat |
-|---|---|
-| TypeScript och Vite-produktionsbygge | Godkända. |
-| Databas, import, deduplicering, bevakningar, median, parser, agent, SSE, avbrott och pagination | 45 automatiska tester godkända. Äldre tester för den ersatta AI-planeraren har tagits bort. |
-| Hela lokala databasen | Test visar att fynd efter den tidigare gränsen på 2 000 kandidater är sökbara. Ingen sådan totalgräns finns kvar. |
-| Mac-gränssnitt i Electron | Nio kontrollsteg godkända: chatstart, virtualiserade bilkort, favoriter, filter, originalerbjudanden/dubbletter, median, bevakningar, jämförelse, smal layout och synliga AI-fel. |
-| Låst AI-konfiguration | Verifierad i de färdiga Apple Silicon- och Intel-paketen. Nyckelfält saknas och ändringsförsök avvisas via riktig IPC. Alla tre privata paket innehåller den godkända, fasta nyckeln; bootstrap lämnar inte ut den. |
-| Produktionsberoenden | npm audit: inga kända sårbarheter. |
-| OpenRouter Free, verkligt nätanrop | Auktoriserad nyckel verifierad. `openrouter/free` strömmade 65 innehållsdelar och ett riktigt sökverktygsanrop i första testet. |
-| Full agentloop, verkliga källor | Den privata Mac-appen slutförde sökning och följdfråga med den fasta nyckeln. 30 lokala matchningar i den filtrerade sökningen; följdfrågan läste originalannonser för tre valda bilar och visade att jämförelseunderlaget var otillräckligt. 1 524 strömmade textdelar sammanlagt, inga sidfel. Antal är en ögonblicksbild, inte marknadstäckning. |
-| Vanlig sidbläddring | Bytbil: sida 2 gav ytterligare annonser. Bilweb: två 23-postsidor utan gemensamma länkar. Wayke: 24 + 13 länkar i den filtrerade sökningen. |
-| Mac-paketering arm64 och x64 | Byggda. Båda paketen har passerat gränssnittstestet; x64 kördes i Rosetta. Låst AI-konfiguration är verifierad i båda. Slutliga rapporter finns i testbevisen. |
-| Windows x64 | Godkänt på GitHubs Windows-maskin: 45 datatester, produktionens gränssnitt, paketering, nio gränssnittssteg i portabel app och samma steg efter riktig NSIS-installation. Installeraren avslutade med kod 0. Den lokala privata Windows-versionens nyckel och identiska huvudprocesskod har kontrollerats separat. |
+- 55 data- och agenttester godkända: exakta filter, deduplicering, uppdateringar, borttagningar, 24-timmarsarkiv, nya söksessioner och sidbläddring.
+- Färdiga Apple Silicon- och Intel-appar godkända i 11 gränssnittssteg vardera. Intel-appen kördes i Rosetta. Båda körde den verkliga lokala EmbeddingGemma 2-modellen.
+- Ett verkligt test i det privata Apple Silicon-paketet hämtade aktuella annonser från Blocket, Bytbil, Bilweb, Wayke, Kvdbil och Riddermark. Alla sex källor svarade utan källfel i sluttestet.
+- OpenRouter `openrouter/free` strömmade 252 innehållsdelar. Det slutliga svaret var 22 ord och priset hämtades från det verkliga bilurvalet. Svar som upprepar bilkort, visar träffantal eller innehåller främmande prisuppgifter kortas till en datagrundad slutsats.
+- Mörkt/ljust tema, arkivåterställning, manuella filter, historik i smalt fönster och lokal rekommendering har provats. Inga sidfel rapporterades.
+- Mac- och Windows-paketen innehåller samma huvudprocesskod och den privata fasta nyckeln. Nyckel- och modelländringar avvisas; nyckeln returneras aldrig till gränssnittet. Källkodspaketet och GitHub innehåller ingen nyckel eller användardatabas.
+- Produktionsberoenden: inga kända sårbarheter enligt npm audit vid slutkontrollen.
 
-## Leverans och kontroller
+Windows 0.3 godkändes på en verklig Windows x64-maskin i [GitHub Actions-körning 37525366628](https://github.com/luftSvensken/CarCrow/actions/runs/37525366628), mot commit `185e7a93d6e40d06d12cd34266a57d41d4782719`. Alla 55 datatester och 11 gränssnittskontroller vardera för portabel och faktiskt installerad app passerade. NSIS-installationen returnerade 0. Testet använde den verkliga lokala modellen och isolerade testbilar; det använde ingen privat OpenRouter-nyckel. De privata leveranspaketen har samma appkod och den fasta nyckeln från Mac-paketet.
 
-[Windows-körningen](https://github.com/luftSvensken/CarCrow/actions/runs/37503145272) är godkänd, med commit `2267b4b81db55f492ecea14a5fec569a86fb9318`. Både portabel app och installerad app rapporterar `win32`, `x64`, `passed` och låst AI-konfiguration. Bilder och JSON-rapporter från Windows och båda Mac-arkitekturerna ingår i leveransens testbevis.
+Appen är installerad i användarens programmapp och öppnad. Den lokala databasen bevarades; innehållet jämfördes före och efter installationen.
 
-CI använder en kopia av källkoden utan API-nyckel och isolerade exempelbilar. Den hårdkodade privata nyckeln finns bara i de lokala installationspaketen. Privata binärer laddas inte upp till GitHub. Den riktiga AI-sökningen har körts på Mac; live-anrop med din nyckel har inte körts på Windows. Appkoden för anslutningen är densamma på plattformarna.
+## Praktiska gränser
 
-Mac-appen är installerad i användarens lokala programmapp. Befintliga favoriter och tidigare chattar bevarades i den normala lokala databasen. Avbrottsknappen har provats i det privata paketet. AI-inställningen är skrivskyddad även för bakomliggande anrop.
+Källors tillgänglighet och sidformat kan ändras, och BlocketAPI har ett begränsat sökfönster. Misslyckad åtkomst visas utan kringgående. Varje sökning börjar hos aktuella källor; appen hämtar inte hela Sveriges marknad i bakgrunden. En tom delmängd är aldrig bevis på att gamla annonser tagits bort.
 
-## Praktiska begränsningar
-
-Fria OpenRouter-modeller kan ge olika svar och kan ha tillfälliga begränsningar. Att en agentloop slutförs innebär inte att varje möjlig textfråga eller varje modell är perfekt. Bilkort, filter och prisjämförelser kommer från verifierad databaslogik. Modellen har instruktioner att inte hitta på annonsfakta, men all text måste kunna kontrolleras mot de faktiska annonserna.
-
-HTML-källor kan ändra format eller åtkomst. Ingen fullständig Sverigespegel eller garanterad åtkomst till alla annonser utlovas. Osignerade privata paket saknar Apple-notarisation och verifierad Windows-utgivarsignatur.
+Rekommendationer använder den lokala textencodern i Google EmbeddingGemma 2, kvantiserad till int8, med 256 dimensioner och 256 token. Den följer med appen. Mac-exporten nådde 0,988–0,992 i kosinusöverensstämmelse med originalet för tre svenska texter. Windows-exporten använder reducerat int8-viktintervall och nådde 0,9895; dess faktiska lokala rangordning och båda Windows-apparnas rekommendationsvy passerade. Prisjämförelser använder verkliga annonspriser och kräver minst fem andra jämförbara bilar; priserna är inte slutpriser eller bevis på bilens skick.
