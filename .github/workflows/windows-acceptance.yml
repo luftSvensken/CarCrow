@@ -1,0 +1,43 @@
+name: Windows acceptance
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Build, install and verify CarCrow
+        shell: pwsh
+        run: ./scripts/verify-windows.ps1 -InstallOnEphemeralRunner
+      - name: Save test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-test-evidence
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Save verified Windows packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: CarCrow-Windows
+          path: |
+            release/CarCrow-Windows-Setup.exe
+            release/*-win.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

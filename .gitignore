@@ -1,0 +1,9 @@
+node_modules/
+dist/
+release/
+*.log
+.env
+test-results/
+playwright-report/
+
+electron/provisioned-key.cjs
