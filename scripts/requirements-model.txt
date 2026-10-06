@@ -5,3 +5,4 @@ sentence-transformers==6.1.0
 onnx==1.23.2
 onnxruntime==1.30.0
 truststore==0.10.4
+pillow==12.3.0

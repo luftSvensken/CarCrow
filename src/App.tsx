@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useRef,useState,type FormEvent,type ReactNode} from 'react';
-import Markdown from 'react-markdown';
+import Markdown,{type Components} from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {useVirtualizer} from '@tanstack/react-virtual';
 import {ArrowLeft,ArrowUp,ArrowUpRight,Archive,History,Bookmark,CarFront,Check,ChevronDown,ChevronRight,Plus,Settings,SlidersHorizontal,Square,Trash2,X,RefreshCw,Bell,AlertCircle,Search,Sparkles,Sun,Moon,Monitor,Undo2} from 'lucide-react';
@@ -133,16 +133,17 @@ export default function App(){
 }
 
 function chatResults(c:Chat):Results{return {items:c.cars,total:c.total??c.cars.length,page:0,filters:c.filters,remaining:c.remaining??0,hasMore:c.hasMore,sessionId:c.sessionId,comparison:c.comparison};}
-function AnimatedWords({children,active}:{children:ReactNode;active:boolean}){if(!active)return <>{children}</>;return <>{Array.isArray(children)?children.map((child,i)=>typeof child==='string'?child.split(/(\s+)/).map((word,j)=><span className={word.trim()?'stream-word':''} key={i+':'+j}>{word}</span>):child):typeof children==='string'?children.split(/(\s+)/).map((word,i)=><span className={word.trim()?'stream-word':''} key={i}>{word}</span>):children}</>;}
+function AnimatedWords({children}:{children:ReactNode}){return <>{Array.isArray(children)?children.map((child,i)=>typeof child==='string'?child.split(/(\s+)/).map((word,j)=><span className={word.trim()?'stream-word':''} key={i+':'+j}>{word}</span>):child):typeof children==='string'?children.split(/(\s+)/).map((word,i)=><span className={word.trim()?'stream-word':''} key={i}>{word}</span>):children}</>;}
+const markdownComponents:Components={p:({children})=><p><AnimatedWords>{children}</AnimatedWords></p>,li:({children})=><li><AnimatedWords>{children}</AnimatedWords></li>,a:({children})=><span className="chat-reference">{children}</span>,table:({children})=><div className="markdown-table"><table>{children}</table></div>};
 function ChatMessage({message,phase,retry}:{message:Message;phase:string;retry:()=>void}){
   const working=message.status==='running',activities=message.activities||[];
   const trail=activities.filter(a=>!/^CarCrow (planerar|läser)/.test(a.label));
-  const status=working?(message.text?'Formulerar svaret':trail.filter(a=>a.status==='running').at(-1)?.label||phase||'Förstår dina önskemål'):message.status==='stopped'?'Sökningen avbröts':message.status==='error'?'Sökningen kunde inte slutföras':'Så hittade vi bilarna';
+  const status=working?(trail.filter(a=>a.status==='running').at(-1)?.label||(message.text?'Formulerar svaret':phase||'Förstår dina önskemål')):message.status==='stopped'?'Sökningen avbröts':message.status==='error'?'Sökningen kunde inte slutföras':'Så hittade vi bilarna';
   return <article className={'message '+message.role}>
     {message.role==='assistant'&&<div className="assistant-avatar"><Crow size={25} thinking={working}/></div>}
     <div className="message-body">
       {message.role==='assistant'&&(trail.length>0||working)&&<details className="activity-trail"><summary><span className="activity-summary">{status}</span><span className="activity-open-label">Söksteg</span>{trail.length>0&&<ChevronDown size={14}/>}</summary>{trail.length>0&&<ol>{trail.map(a=><li key={a.id}><span className={'activity-dot '+a.status}/><span>{a.label}</span></li>)}</ol>}</details>}
-      {message.text&&<div className={'message-text '+(working?'streaming':'')}><Markdown remarkPlugins={[remarkGfm]} skipHtml disallowedElements={['img']} components={{p:({children})=><p><AnimatedWords active={working}>{children}</AnimatedWords></p>,li:({children})=><li><AnimatedWords active={working}>{children}</AnimatedWords></li>,a:({children})=><span className="chat-reference">{children}</span>,table:({children})=><div className="markdown-table"><table>{children}</table></div>}}>{message.text.replace(/\b(search_market|search_database|inspect_car|compare_cars)\b/g,name=>({search_market:'marknadssökning',search_database:'annonsökning',inspect_car:'annonsgranskning',compare_cars:'prisjämförelse'} as Record<string,string>)[name])}</Markdown></div>}
+      {message.text&&<div className={'message-text '+(working?'streaming':'')}><Markdown remarkPlugins={[remarkGfm]} skipHtml disallowedElements={['img']} components={markdownComponents}>{message.text.replace(/\b(search_market|search_database|inspect_car|compare_cars)\b/g,name=>({search_market:'marknadssökning',search_database:'annonsökning',inspect_car:'annonsgranskning',compare_cars:'prisjämförelse'} as Record<string,string>)[name])}</Markdown></div>}
       {message.error&&message.status!=='stopped'&&<div className="message-error"><p>{message.error}</p><button onClick={retry}>Försök igen<RefreshCw size={14}/></button></div>}
     </div>
   </article>;

@@ -1,6 +1,7 @@
 const crypto=require('node:crypto');
 const {validateFilters}=require('./core.cjs');
 const {scopeKey}=require('./market.cjs');
+const {conciseAnswer}=require('./answer.cjs');
 const {FILTER_SCHEMA}=require('./services.cjs');
 const {streamCompletion,cancelled}=require('./stream.cjs');
 const tool=(name,description,properties,required)=>({type:'function',function:{name,description,parameters:{type:'object',additionalProperties:false,properties,required}}});
@@ -56,6 +57,7 @@ Valda bilar: ${JSON.stringify(ids.slice(0,12))}. Aktuella filter: ${JSON.stringi
         }
       }
       if(!finished)throw new Error('Agenten behöver ett nytt meddelande för att fortsätta.');
+      const conciseText=conciseAnswer(message.text,chat.cars,{...chat.filters,comparison:chat.comparison});if(conciseText!==message.text){message.text=conciseText;emit({type:'replaceText',text:conciseText});}
       message.status='done';chat.context=messages.slice(1);this.save(chat);emit({type:'done',chat});
     }catch(e){message.status=e.name==='AbortError'?'stopped':'error';message.error=e.message;for(const a of message.activities)if(a.status==='running'){a.status='stopped';emit({type:'activity',activity:a});}this.save(chat);emit({type:message.status,error:e.message,chat});}
     finally{if(this.active?.runId===runId)this.active=null;}

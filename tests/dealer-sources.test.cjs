@@ -22,3 +22,7 @@ test('fresh sessions skip nonmatching pages and repeated agent searches reach di
 });
 
 test('Bytbil translates the verified BMW family label used by its ordinary search form',()=>{const {listURL}=require('../electron/html-sources.cjs');assert.equal(new URL(listURL('bytbil',{models:['3-serie']},'BMW')).searchParams.get('Models'),'3-serien');});
+
+test('final chat removes duplicate car tables and hit counts while retaining the source caveat',()=>{const {conciseAnswer}=require('../electron/answer.cjs');const input='Hittade 4 BMW som matchar:\n\n| Bil | Pris |\n|---|---|\n| BMW 320d | 140000 kr |\n\nUnderlaget räcker inte för att bedöma om det är ett fynd.';const answer=conciseAnswer(input,[{make:'BMW'}]);assert.doesNotMatch(answer,/Hittade 4|\|/);assert.match(answer,/Underlaget räcker inte/);});
+
+test('a fabricated money amount is replaced by a concise conclusion from the actual cars',()=>{const {conciseAnswer}=require('../electron/answer.cjs');const answer=conciseAnswer('Sökresultatet visar fyra BMW under 200 kr.',[{make:'BMW',model:'3-serie',year:2014,price:144900}],{maxPrice:199999});assert.doesNotMatch(answer,/fyra|under 200 kr/);assert.match(answer,/144\s*900/);});
