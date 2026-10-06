@@ -66,7 +66,7 @@ class Market {
           const url=riddermarkURL(f,cursor.page,groups[cursor.group]),html=await this.request(url,{kind:'html',signal});const parsed=riddermarkPage(html);ads=parsed.listings;signature=ads.map(x=>x.id).join(',');nextURL=parsed.count>=39?riddermarkURL(f,cursor.page+1,groups[cursor.group]):null;
         }else{
           const url=cursor.nextURL||listURL(source.id,f,groups[cursor.group]);const html=await this.request(url,{kind:'html',signal});const links=listLinks(html,source.id);signature=links.join(',');
-          if(!links.length&&!/0\s+(?:Personbilar|bilar|träffar|resultat|annonser)/i.test(html))throw new Error('Annonslistan kunde inte läsas.');
+          if(!links.length&&!/(?:0\s+(?:Personbilar|bilar|träffar|resultat|annonser)|Inga fordon matchade sökningen)/i.test(html))throw new Error('Annonslistan kunde inte läsas.');
           nextURL=nextHTMLPage(html,source.id,url);if(source.id==='bilweb')total=Number(cheerio.load(html)('#page-data').attr('data-total'))||null;
           let index=0,completed=0;const failures=[];
           const workers=await Promise.allSettled(Array.from({length:Math.min(3,links.length)},async()=>{

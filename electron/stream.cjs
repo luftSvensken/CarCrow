@@ -19,7 +19,7 @@ async function streamCompletion({key,messages,tools,signal,onDelta,model='openro
   if(signal?.aborted)throw cancelled();
   return new Promise((resolve,reject)=>{
     let content='',finish=null,usedModel=model,bytes=0;const calls=new Map();
-    const req=https.request('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json',Accept:'text/event-stream','X-Title':'CarCrow','User-Agent':'CarCrow/0.2 private desktop'},lookup:(_h,opts,cb)=>opts?.all?cb(null,[chosen]):cb(null,chosen.address,chosen.family)},res=>{
+    const req=https.request('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json',Accept:'text/event-stream','X-Title':'CarCrow','User-Agent':'CarCrow/0.3 private desktop'},lookup:(_h,opts,cb)=>opts?.all?cb(null,[chosen]):cb(null,chosen.address,chosen.family)},res=>{
       if(res.statusCode<200||res.statusCode>=300){res.resume();const e=new Error(res.statusCode===401?'OpenRouter godkände inte appens anslutning.':res.statusCode===429?'OpenRouter Free är tillfälligt begränsat. Försök igen om en stund.':'OpenRouter svarade med HTTP '+res.statusCode+'.');e.status=res.statusCode;reject(e);return;}
       if(!String(res.headers['content-type']).includes('text/event-stream')){res.resume();reject(new Error('OpenRouter returnerade ingen ström.'));return;}
       const parser=new SSEDecoder(data=>{

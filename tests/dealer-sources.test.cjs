@@ -20,3 +20,5 @@ test('fresh sessions skip nonmatching pages and repeated agent searches reach di
  const second=await agent.execute('search_market',{filters:{maxPrice:150000}},chat,options);assert.deepEqual(pages,[0,20,40]);assert.ok(second.cars.every(c=>!initial.has(c.id)));
  await sessions.start({maxPrice:150000});assert.deepEqual(pages.slice(-2),[0,20]);
 });
+
+test('Bytbil translates the verified BMW family label used by its ordinary search form',()=>{const {listURL}=require('../electron/html-sources.cjs');assert.equal(new URL(listURL('bytbil',{models:['3-serie']},'BMW')).searchParams.get('Models'),'3-serien');});

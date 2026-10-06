@@ -7,7 +7,7 @@ function registration(v){v=String(v||'').replace(/[ -]/g,'').toUpperCase();retur
 function vin(v){v=String(v||'').toUpperCase();return /^[A-HJ-NPR-Z0-9]{17}$/.test(v)?v:null;}
 function structuredCar($){let car;$('script[type="application/ld+json"]').each((_i,e)=>{try{const v=JSON.parse($(e).text()),values=Array.isArray(v)?v:[v,...(v['@graph']||[])];const found=values.find(x=>x['@type']==='Car'||Array.isArray(x['@type'])&&x['@type'].includes('Car'));if(found)car=found;}catch{}});return car;}
 function inactive(d){return /^https:\/\/schema\.org\/(SoldOut|OutOfStock|Discontinued)$/.test(d?.offers?.availability||'');}
-function modelName(make,v){if(make==='BMW'&&/^[1-8]\d\d[deix]/i.test(v))return v[0]+'-serie';return v;}
+function modelName(make,v){if(make==='BMW'&&/^[1-8]\d\d[deix]/i.test(v))return v[0]+'-serie';return make==='BMW'?v.replace(/-serien$/i,'-serie'):v;}
 function fuelName(v,title=''){
   if(/plug.?in|laddhybrid|laddbar/i.test(v+' '+title))return 'Laddhybrid';
   if(/hybrid/i.test(v))return 'Hybrid';
@@ -66,7 +66,7 @@ function listURL(id,f,make){
     if(make)u.searchParams.set('Makes',make==='Skoda'?'Skoda':make);
     for(const [k,p] of [['minPrice','PriceRange.From'],['maxPrice','PriceRange.To'],['minYear','ModelYearRange.From'],['maxYear','ModelYearRange.To'],['maxMileage','MilageRange.To']])if(f[k]!=null)u.searchParams.set(p,String(f[k]));
     if(f.gearbox)u.searchParams.set('Gearboxes',f.gearbox==='Automat'?'Automatisk':'Manuell');
-    for(const model of f.models||[])u.searchParams.append('Models',model);
+    for(const model of f.models||[])u.searchParams.append('Models',make==='BMW'?model.replace(/-serie$/i,'-serien'):model);
     const fuels={Bensin:['Bensin'],Diesel:['Diesel'],El:['El'],Hybrid:['Elhybrid','Hybrid el/diesel','Hybrid el/bensin'],Laddhybrid:['Laddhybrid'],Etanol:['Bensin/etanol'],Gas:['Bensin/gas','Naturgas']};for(const fuel of f.fuelTypes||[])for(const value of fuels[fuel]||[])u.searchParams.append('Fuels',value);
     if(f.query)u.searchParams.set('FreeText',f.query);u.searchParams.set('SortParams.SortField',f.sort==='priceAsc'||f.sort==='priceDesc'?'price_value':f.sort==='mileage'?'milage':'publishedDate');u.searchParams.set('SortParams.IsAscending',f.sort==='priceAsc'||f.sort==='mileage'?'True':'False');
   }else if(id==='bilweb'){
