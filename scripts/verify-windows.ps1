@@ -1,18 +1,20 @@
-param([switch]$InstallOnEphemeralRunner)
+param([switch]$InstallOnEphemeralRunner, [switch]$SkipBuild)
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'Denna kontroll ska köras på Windows.' }
 if ($InstallOnEphemeralRunner -and $env:GITHUB_ACTIONS -ne 'true') {
     throw 'Installationstestet kräver en tillfällig GitHub Actions-runner. Använd standardkontrollen på en vanlig dator.'
 }
 Set-Location (Split-Path $PSScriptRoot -Parent)
-npm ci
-if ($LASTEXITCODE -ne 0) { throw 'npm ci misslyckades' }
-npm test
-if ($LASTEXITCODE -ne 0) { throw 'Datatester misslyckades' }
-npm run build
-if ($LASTEXITCODE -ne 0) { throw 'Bygget misslyckades' }
-npx electron-builder --win zip nsis --x64 --config.nsis.artifactName=CarCrow-Windows-Setup.exe
-if ($LASTEXITCODE -ne 0) { throw 'Paketeringen misslyckades' }
+if (-not $SkipBuild) {
+    npm ci
+    if ($LASTEXITCODE -ne 0) { throw 'npm ci misslyckades' }
+    npm test
+    if ($LASTEXITCODE -ne 0) { throw 'Datatester misslyckades' }
+    npm run build
+    if ($LASTEXITCODE -ne 0) { throw 'Bygget misslyckades' }
+    npx electron-builder --publish never --win zip nsis --x64 --config.nsis.artifactName=CarCrow-Windows-Setup.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Paketeringen misslyckades' }
+}
 $env:CARCROW_EXECUTABLE = Join-Path (Get-Location) 'release\win-unpacked\CarCrow.exe'
 $env:CARCROW_SCREENSHOTS = Join-Path (Get-Location) 'test-results\portable'
 node scripts/smoke.cjs

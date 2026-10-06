@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: carcrow-windows-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -20,9 +24,22 @@ jobs:
         with:
           node-version: '24'
           package-manager-cache: false
-      - name: Build, install and verify CarCrow
+      - name: Verify credential-free source
         shell: pwsh
-        run: ./scripts/verify-windows.ps1 -InstallOnEphemeralRunner
+        run: |
+          if (Test-Path 'electron/provisioned-key.cjs') { throw 'Private credentials must not enter CI.' }
+          if (Test-Path '.env') { throw 'Private environment files must not enter CI.' }
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify data and agent behavior
+        run: npm test
+      - name: Build interface
+        run: npm run build
+      - name: Package Windows without publishing
+        run: npx electron-builder --publish never --win zip nsis --x64 --config.nsis.artifactName=CarCrow-Windows-Setup.exe
+      - name: Verify portable app and actual installation
+        shell: pwsh
+        run: ./scripts/verify-windows.ps1 -SkipBuild -InstallOnEphemeralRunner
       - name: Save test evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -30,14 +47,4 @@ jobs:
           name: windows-test-evidence
           path: test-results/
           if-no-files-found: warn
-          retention-days: 14
-      - name: Save verified Windows packages
-        uses: actions/upload-artifact@v7
-        with:
-          name: CarCrow-Windows
-          path: |
-            release/CarCrow-Windows-Setup.exe
-            release/*-win.zip
-          if-no-files-found: error
-          compression-level: 0
           retention-days: 14
