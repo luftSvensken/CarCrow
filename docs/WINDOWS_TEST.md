@@ -1,6 +1,6 @@
 # Windows-test
 
-Appen är byggd för Windows x64. En riktig Windows-körning återstår. Dessa kontroller använder isolerade exempelbilar med AI-anslutningen avstängd; användarens annonser, databas och OpenRouter-konto används inte.
+Appen är byggd för Windows x64. Slutkontrollen har passerat på en riktig Windows-maskin via [projektets GitHub Actions](https://github.com/luftSvensken/CarCrow/actions/runs/37503145272). Dessa kontroller använder isolerade exempelbilar med AI-anslutningen avstängd; användarens annonser, databas och OpenRouter-konto används inte.
 
 ## På en Windows-dator
 
@@ -18,7 +18,7 @@ Detta standardläge installerar inte CarCrow på datorn. NSIS-installationen kan
 
 Det färdiga arbetsflödet finns i `.github/workflows/windows-acceptance.yml`. Lägg källkoden, inklusive `.github`-mappen, i ett GitHub-repo. Ett privat repo passar för privat bruk. Arbetsflödet körs manuellt från **Actions → Windows acceptance → Run workflow** på repots standardgren.
 
-GitHubs tillfälliga Windows-maskin kör alla standardkontroller och installerar sedan samma NSIS-paket för den aktuella testanvändaren. Gränssnittskontrollen och låst AI-konfiguration körs igen mot den installerade appen. Testinstallationen finns i maskinens tillfälliga mapp; maskinen försvinner efter jobbet. Därför är installationsläget begränsat till Actions-miljön.
+GitHubs tillfälliga Windows-maskin verifierar först att källkoden inte innehåller privata nyckelfiler, kör alla standardkontroller och installerar sedan samma NSIS-paket för den aktuella testanvändaren. Gränssnittskontrollen och låst AI-konfiguration körs igen mot den installerade appen. Testinstallationen finns i maskinens tillfälliga mapp; maskinen försvinner efter jobbet. Därför är installationsläget begränsat till Actions-miljön. Paketeringen använder alltid `--publish never`. Endast isolerade testbilder och rapporter laddas upp; programfiler och API-nycklar hålls lokalt.
 
 Vid godkänt resultat innehåller körningen:
 
