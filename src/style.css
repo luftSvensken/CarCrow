@@ -18,3 +18,5 @@
 .message-text pre{overflow-x:auto;background:#f5f4f7;padding:16px;border-radius:12px;font-size:13px}
 .message-text blockquote{margin:14px 0;padding-left:18px;color:var(--muted);border-left:2px solid #dedbe6}
 .chat-reference{font-weight:600}
+
+.assistant .message-text{white-space:normal}
