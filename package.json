@@ -1,6 +1,6 @@
 {
   "name": "carcrow",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Svensk bilsökning för Windows och Mac",
   "author": "CarCrow",
@@ -16,9 +16,11 @@
     "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {
+    "@huggingface/tokenizers": "0.2.0",
     "@tanstack/react-virtual": "^3.14.13",
     "cheerio": "^1.1.2",
     "lucide-react": "^0.468.0",
+    "onnxruntime-node": "1.22.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
@@ -46,7 +48,9 @@
       "dist/**/*",
       "electron/**/*",
       "assets/icon.png",
-      "package.json"
+      "package.json",
+      "!node_modules/onnxruntime-node/bin/napi-v6/linux/**/*",
+      "!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**/*"
     ],
     "mac": {
       "category": "public.app-category.lifestyle",
@@ -71,6 +75,25 @@
       ],
       "language": "1053"
     },
-    "publish": null
+    "publish": null,
+    "extraResources": [
+      {
+        "from": "models/embeddinggemma-2",
+        "to": "models/embeddinggemma-2",
+        "filter": [
+          "model.onnx",
+          "tokenizer.json",
+          "tokenizer_config.json",
+          "manifest.json",
+          "LICENSE"
+        ]
+      }
+    ]
+  },
+  "overrides": {
+    "onnxruntime-node": {
+      "adm-zip": "0.6.1",
+      "global-agent": "4.1.3"
+    }
   }
 }

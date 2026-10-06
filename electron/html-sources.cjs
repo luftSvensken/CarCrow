@@ -51,13 +51,15 @@ function parseWaykeDetail(html,url){
   const identities=Array.isArray(d.identifier)?d.identifier:[d.identifier].filter(Boolean);const plate=identities.find(x=>x.propertyID==='registrationNumber')?.value||fields.Registreringsnummer;
   return {id:url.split('/objekt/')[1]?.split('?')[0]||'',title:d.name,make,model,variant,comparisonVariant:make==='BMW'&&/^\d{3}[deix]/i.test(variant)?variant.match(/^\d{3}[deix]+/i)[0]:variant.split(/\s+/).slice(0,2).join(' '),bodyType:fields.Kaross||d.bodyType||'',year:Number(d.vehicleModelDate),mileage,fuel,gearbox,price:Number(d.offers.price),url:d.url||url,images:(Array.isArray(d.image)?d.image:[d.image].filter(Boolean)).slice(0,40),seller:d.offers.seller?.name||fields['Säljare']||'',city:fields['Säljarens plats']||'',vin:vin(d.vehicleIdentificationNumber),registration:registration(plate),description:text($('[data-testid="item-v2-description"]').first()),publishedAt:d.offers.validFrom};
 }
-function parseDetail(id,html,url){return id==='bilweb'?parseBilwebDetail(html,url):id==='wayke'?parseWaykeDetail(html,url):parseBytbilDetail(html,url);}
+function parseDetail(id,html,url){return id==='riddermark'?require('./dealer-sources.cjs').riddermarkDetail(html,url):id==='kvd'?require('./dealer-sources.cjs').parseKvdDetail(html,url):id==='bilweb'?parseBilwebDetail(html,url):id==='wayke'?parseWaykeDetail(html,url):parseBytbilDetail(html,url);}
 function listLinks(html,id){
   const $=require('cheerio').load(html),base=id==='bilweb'?'https://bilweb.se':id==='wayke'?'https://www.wayke.se':'https://www.bytbil.com';
+  if(id==='kvd')return [...new Set($('a[href^="/auktioner/"]').toArray().map(e=>new URL($(e).attr('href'),'https://www.kvd.se').href))];
   const links=id==='bilweb'?$('[data-vehicle-id]').toArray().map(e=>$(e).find('a[href]').toArray().map(a=>$(a).attr('href')).find(h=>/\-\d+$/.test(h||''))):id==='wayke'?$('[data-product-card-link][href^="/objekt/"]').toArray().map(e=>$(e).attr('href')):$('.result-list-item .js-link-target').toArray().map(e=>$(e).attr('href'));
   return [...new Set(links.filter(Boolean).map(h=>new URL(h,base).href))].filter(u=>new URL(u).hostname===new URL(base).hostname);
 }
 function listURL(id,f,make){
+  if(id==='kvd'){const u=new URL('https://www.kvd.se/begagnade-bilar');u.searchParams.set('auctionType','BUY_NOW');if(make)u.searchParams.set('brand',make);if(f.query)u.searchParams.set('terms',f.query);return u.href;}
   const slug=v=>v.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-');
   const u=new URL(id==='bilweb'?'https://bilweb.se/sok'+(make?'/'+slug(make==='Mercedes-Benz'?'Mercedes':make):''):id==='wayke'?'https://www.wayke.se/sok'+(make?'/'+slug(make):''):'https://www.bytbil.com/bil');
   if(id==='bytbil'){

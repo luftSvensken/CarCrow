@@ -82,6 +82,9 @@ class Store {
       CREATE INDEX IF NOT EXISTS listing_vehicle ON listings(vehicle_id);
       CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT,listing_id TEXT,kind TEXT,at TEXT,old_price INTEGER,new_price INTEGER);
       CREATE TABLE IF NOT EXISTS bookmarks(vehicle_id TEXT PRIMARY KEY);
+      CREATE TABLE IF NOT EXISTS bookmark_archive(vehicle_id TEXT PRIMARY KEY,removed_at TEXT NOT NULL,expires_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS watch_results(watch_id TEXT PRIMARY KEY,vehicle_ids TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS watch_checks(watch_id TEXT PRIMARY KEY,checked_at TEXT,error TEXT);
       CREATE TABLE IF NOT EXISTS watches(id TEXT PRIMARY KEY,name TEXT,filters TEXT,demo INTEGER,created TEXT,seen TEXT);`);
     store.salt=store.setting('identitySalt')||crypto.randomBytes(32).toString('hex');
     store.setSetting('identitySalt',store.salt); return store;
@@ -118,6 +121,8 @@ class Store {
           this.db.run('UPDATE listings SET vehicle_id=? WHERE vehicle_id=?',[vehicleId,merge]);
           this.db.run('UPDATE identities SET vehicle_id=? WHERE vehicle_id=?',[vehicleId,merge]);
           if(this.rows('SELECT * FROM bookmarks WHERE vehicle_id=?',[merge]).length)this.db.run('INSERT OR IGNORE INTO bookmarks VALUES (?)',[vehicleId]);
+          const archived=this.rows('SELECT * FROM bookmark_archive WHERE vehicle_id=?',[merge])[0];if(archived)this.db.run('INSERT OR IGNORE INTO bookmark_archive VALUES (?,?,?)',[vehicleId,archived.removed_at,archived.expires_at]);
+          this.db.run('DELETE FROM bookmark_archive WHERE vehicle_id=?',[merge]);
           this.db.run('DELETE FROM bookmarks WHERE vehicle_id=?',[merge]);this.db.run('DELETE FROM vehicles WHERE id=?',[merge]);
         }
         for(const key of identityKeys)this.db.run('INSERT OR REPLACE INTO identities VALUES (?,?)',[key,vehicleId]);
@@ -148,7 +153,7 @@ class Store {
     if(!Array.isArray(excludeIds)||excludeIds.some(id=>typeof id!=='string'||id.length>100))throw new Error('Ogiltiga bil-ID.');
     if(excludeIds.length){where.push('vehicle_id NOT IN (SELECT value FROM json_each(?))');params.push(JSON.stringify(excludeIds));}
     if(onlySaved)where.push('vehicle_id IN (SELECT vehicle_id FROM bookmarks)');
-    if(selectedIds){if(!selectedIds.length)return {items:[],total:0,page};where.push(`vehicle_id IN (${selectedIds.map(()=>'?').join(',')})`);params.push(...selectedIds);}
+    if(selectedIds){if(!selectedIds.length)return {items:[],total:0,page};if(!Array.isArray(selectedIds)||selectedIds.some(x=>typeof x!=='string'||x.length>100))throw new Error('Ogiltigt bilurval.');where.push('vehicle_id IN (SELECT value FROM json_each(?))');params.push(JSON.stringify(selectedIds));}
     const base=`WITH ranked AS (SELECT *,ROW_NUMBER() OVER(PARTITION BY vehicle_id ORDER BY price,id) rn FROM listings WHERE active=1 AND demo=?) SELECT * FROM ranked WHERE rn=1${where.length?' AND '+where.join(' AND '):''}`;
     const total=this.rows('SELECT COUNT(*) n FROM ('+base+')',params)[0].n;
     const order={newest:'published DESC',priceAsc:'price ASC',priceDesc:'price DESC',mileage:'mileage ASC',deals:'price ASC'}[f.sort||'newest'];
@@ -185,19 +190,35 @@ class Store {
     const n=peers.length;const median=n>=5?(n%2?peers[(n-1)/2].price:(peers[n/2-1].price+peers[n/2].price)/2):null;
     return {sampleSize:n,median,percentBelow:median?Math.round((1-target.price/median)*1000)/10:null,peers:peers.slice(0,24).map(p=>({id:p.vehicle_id,title:JSON.parse(p.data).title,price:p.price,year:p.year,mileage:p.mileage})),reason:(n<5?'Minst fem andra jämförbara bilar behövs. ':'Samma märke, modell, variant, bränsle och växellåda; årsmodell ±2 år och miltal ±30 % (minst ±2 000 mil). ')+(target.body_type?'Samma karosstyp.':'Karosstyp saknas i källan och är inte verifierad. Jämförelsen är därför mindre säker.')};
   }
-  bookmark(id) {if(!this.rows('SELECT * FROM vehicles WHERE id=?',[id]).length)throw new Error('Okänd bil.');const exists=this.rows('SELECT * FROM bookmarks WHERE vehicle_id=?',[id]).length;this.db.run(exists?'DELETE FROM bookmarks WHERE vehicle_id=?':'INSERT INTO bookmarks VALUES (?)',[id]);this.save();return !exists;}
+  bookmark(id) {
+    if(!this.rows('SELECT * FROM vehicles WHERE id=?',[id]).length)throw new Error('Okänd bil.');
+    const exists=this.rows('SELECT * FROM bookmarks WHERE vehicle_id=?',[id]).length;
+    if(exists){const now=new Date();this.db.run('INSERT OR REPLACE INTO bookmark_archive VALUES (?,?,?)',[id,now.toISOString(),new Date(now.getTime()+86400000).toISOString()]);this.db.run('DELETE FROM bookmarks WHERE vehicle_id=?',[id]);}
+    else {this.db.run('INSERT OR IGNORE INTO bookmarks VALUES (?)',[id]);this.db.run('DELETE FROM bookmark_archive WHERE vehicle_id=?',[id]);}
+    this.save();return !exists;
+  }
+  archived(demo=false) {
+    this.purgeArchive();return this.rows('SELECT * FROM bookmark_archive ORDER BY removed_at DESC').flatMap(row=>{try{return [{...this.detail(row.vehicle_id,demo),removedAt:row.removed_at,expiresAt:row.expires_at}];}catch{return [];}});
+  }
+  restoreBookmark(id) {
+    this.purgeArchive();if(!this.rows('SELECT vehicle_id FROM bookmark_archive WHERE vehicle_id=?',[id]).length)throw new Error('Bilens återställningstid har gått ut.');
+    this.db.run('INSERT OR IGNORE INTO bookmarks VALUES (?)',[id]);this.db.run('DELETE FROM bookmark_archive WHERE vehicle_id=?',[id]);this.save();return true;
+  }
+  purgeArchive(now=Date.now()) {this.db.run('DELETE FROM bookmark_archive WHERE expires_at<=?',[new Date(now).toISOString()]);this.save();}
+  watchChecked(id,error=null,ids) {if(ids)this.db.run('INSERT OR REPLACE INTO watch_results VALUES (?,?)',[id,JSON.stringify(ids)]);this.db.run('INSERT OR REPLACE INTO watch_checks VALUES (?,?,?)',[id,new Date().toISOString(),error]);this.save();}
   excludeListing(id) {this.db.run('UPDATE listings SET active=0 WHERE id=?',[id]);this.save();}
   removeListing(id) {const row=this.rows('SELECT * FROM listings WHERE id=? AND active=1',[id])[0];if(!row)return;const now=new Date().toISOString();this.db.run('UPDATE listings SET active=0,last_seen=? WHERE id=?',[now,id]);this.db.run('INSERT INTO events(listing_id,kind,at,old_price,new_price) VALUES (?,?,?,?,NULL)',[id,'removed',now,row.price]);this.save();}
   facets(demo=false) {const rows=this.rows('SELECT DISTINCT make,model FROM listings WHERE active=1 AND demo=? ORDER BY make,model',[demo?1:0]);return {makes:[...new Set(rows.map(x=>x.make))],models:rows,fuels:FUELS};}
   stats(demo=false) {return {...this.rows('SELECT COUNT(*) listings,COUNT(DISTINCT vehicle_id) vehicles,MAX(last_seen) updated FROM listings WHERE active=1 AND demo=?',[demo?1:0])[0],sources:this.sources().filter(s=>!s.demo).map(s=>({id:s.id,name:s.name,enabled:s.enabled,lastSync:s.lastSync,error:s.error})),aiConfigured:!!this.setting('apiKey'),model:'openrouter/free'};}
-  watches(demo=false) {return this.rows('SELECT * FROM watches WHERE demo=? ORDER BY created DESC',[demo?1:0]).map(w=>{const filters=JSON.parse(w.filters);const result=this.search(filters,demo,0,false,null,true);const seen=new Set(JSON.parse(w.seen));return {id:w.id,name:w.name,filters,total:result.total,newCount:result.ids.filter(id=>!seen.has(id)).length};});}
+  watches(demo=false) {return this.rows('SELECT * FROM watches WHERE demo=? ORDER BY created DESC',[demo?1:0]).map(w=>{const filters=JSON.parse(w.filters);const current=this.rows('SELECT vehicle_ids FROM watch_results WHERE watch_id=?',[w.id])[0];const result=this.search(filters,demo,0,false,current?JSON.parse(current.vehicle_ids):null,true);const seen=new Set(JSON.parse(w.seen));const checked=this.rows('SELECT checked_at,error FROM watch_checks WHERE watch_id=?',[w.id])[0];return {id:w.id,name:w.name,filters,total:result.total,newCount:result.ids.filter(id=>!seen.has(id)).length,checkedAt:checked?.checked_at||null,error:checked?.error||null};});}
   addWatch(name,filters,demo=false) {filters=validateFilters(filters);const seen=this.search(filters,demo,0,false,null,true).ids;this.db.run('INSERT INTO watches VALUES (?,?,?,?,?,?)',[crypto.randomUUID(),cleanString(name,100)||'Min sökning',JSON.stringify(filters),demo?1:0,new Date().toISOString(),JSON.stringify(seen)]);this.save();}
-  removeWatch(id) {this.db.run('DELETE FROM watches WHERE id=?',[id]);this.save();}
+  removeWatch(id) {this.db.run('DELETE FROM watches WHERE id=?',[id]);this.db.run('DELETE FROM watch_checks WHERE watch_id=?',[id]);this.db.run('DELETE FROM watch_results WHERE watch_id=?',[id]);this.save();}
   markWatch(id) {const w=this.rows('SELECT * FROM watches WHERE id=?',[id])[0];if(w){this.db.run('UPDATE watches SET seen=? WHERE id=?',[JSON.stringify(this.search(JSON.parse(w.filters),!!w.demo,0,false,null,true).ids),id]);this.save();}}
   purgeExpired() {
+    this.purgeArchive();
     const now=Date.now();for(const s of this.sources().filter(s=>!s.demo)) {
       if(s.approvedUntil && Date.parse(s.approvedUntil)<now) {this.db.run('DELETE FROM events WHERE listing_id IN (SELECT id FROM listings WHERE source_id=?)',[s.id]);this.db.run('DELETE FROM listings WHERE source_id=?',[s.id]);}
-      else if(s.retentionDays) {const cutoff=new Date(now-s.retentionDays*86400000).toISOString();this.db.run('DELETE FROM events WHERE listing_id IN (SELECT id FROM listings WHERE source_id=? AND last_seen<?)',[s.id,cutoff]);this.db.run('DELETE FROM listings WHERE source_id=? AND last_seen<?',[s.id,cutoff]);}
+      else if(s.retentionDays) {const cutoff=new Date(now-s.retentionDays*86400000).toISOString();const eligible='source_id=? AND last_seen<? AND vehicle_id NOT IN (SELECT vehicle_id FROM bookmarks UNION SELECT vehicle_id FROM bookmark_archive)';this.db.run('DELETE FROM events WHERE listing_id IN (SELECT id FROM listings WHERE '+eligible+')',[s.id,cutoff]);this.db.run('DELETE FROM listings WHERE '+eligible,[s.id,cutoff]);}
     }this.save();
   }
 }

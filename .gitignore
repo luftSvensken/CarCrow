@@ -7,3 +7,5 @@ test-results/
 playwright-report/
 
 electron/provisioned-key.cjs
+
+models/embeddinggemma-2/

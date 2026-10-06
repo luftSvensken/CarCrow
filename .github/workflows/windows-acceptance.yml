@@ -15,7 +15,7 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
         with:
@@ -35,6 +35,14 @@ jobs:
         run: npm test
       - name: Build interface
         run: npm run build
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Prepare the real on-device recommendation model
+        run: |
+          python -m pip install -r scripts/requirements-model.txt
+          python scripts/export-embeddinggemma2.py
+          node scripts/check-embeddings.cjs
       - name: Package Windows without publishing
         run: npx electron-builder --publish never --win zip nsis --x64 --config.nsis.artifactName=CarCrow-Windows-Setup.exe
       - name: Verify portable app and actual installation

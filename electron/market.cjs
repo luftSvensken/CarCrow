@@ -5,6 +5,7 @@ const {validateFilters,normalizeListing}=require('./core.cjs');
 const {buildURL,parseCar}=require('./blocket.cjs');
 const {listURL,listLinks,parseDetail}=require('./html-sources.cjs');
 const {cancelled}=require('./stream.cjs');
+const {riddermarkPage,riddermarkDetail,riddermarkURL,kvdPage,kvdURL}=require('./dealer-sources.cjs');
 function scopeKey(filters){const f=validateFilters(filters);return 'market:'+crypto.createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.entries(f).sort(([a],[b])=>a.localeCompare(b))))).digest('hex');}
 function nextHTMLPage(html,id,url){
   const $=cheerio.load(html),current=new URL(url),page=Number(current.searchParams.get(id==='bytbil'?'Page':'page')||1);
@@ -27,23 +28,23 @@ class Market {
   constructor(store,{request=requestJSON}={}){this.store=store;this.request=request;this.jobs=new Map();}
   coverage(filters={}){return this.store.setting(scopeKey(filters))||{sources:{}};}
   reset(filters={}){this.store.setSetting(scopeKey(filters),{sources:{}});}
-  async next(filters={}, {signal,onProgress=()=>{},sources:onlySources,fresh=false,excludeIds=[]}={}){
-    if(signal?.aborted)throw cancelled();const f=validateFilters(filters),key=scopeKey(f),jobKey=key+':'+(fresh?'fresh':'crawl')+':'+(onlySources||[]).join(',');
+  async next(filters={}, {signal,onProgress=()=>{},sources:onlySources,fresh=false,excludeIds=[],session}={}){
+    if(signal?.aborted)throw cancelled();const f=validateFilters(filters),key=scopeKey(f),jobKey=key+':'+(session?.id||'')+':'+(fresh?'fresh':'crawl')+':'+(onlySources||[]).join(',');
     let job=this.jobs.get(jobKey);
     if(!job){
       job={controller:new AbortController(),listeners:new Set(),subscribers:0};this.jobs.set(jobKey,job);
-      job.promise=Promise.resolve().then(()=>this.fetchPage(f,{signal:job.controller.signal,onProgress:e=>{for(const listener of job.listeners)listener(e);},sources:onlySources,fresh})).finally(()=>this.jobs.delete(jobKey));
+      job.promise=Promise.resolve().then(()=>this.fetchPage(f,{signal:job.controller.signal,onProgress:e=>{for(const listener of job.listeners)listener(e);},sources:onlySources,fresh,session})).finally(()=>this.jobs.delete(jobKey));
     }
     job.subscribers++;job.listeners.add(onProgress);
     return new Promise((resolve,reject)=>{
       let settled=false;const cleanup=()=>{job.listeners.delete(onProgress);job.subscribers--;signal?.removeEventListener('abort',abort);};
       const abort=()=>{if(settled)return;settled=true;cleanup();if(!job.subscribers)job.controller.abort();reject(cancelled());};signal?.addEventListener('abort',abort,{once:true});
-      job.promise.then(result=>{if(settled)return;settled=true;cleanup();const unseen=this.store.search(f,false,0,false,null,false,excludeIds);resolve({...result,...unseen,total:this.store.search(f,false).total,remaining:unseen.total-unseen.items.length,filters:f});},e=>{if(settled)return;settled=true;cleanup();reject(e);});
+      job.promise.then(result=>{if(settled)return;settled=true;cleanup();if(session)for(const id of result.vehicleIds||[])session.ids.add(id);const selected=session?[...session.ids]:null;const unseen=this.store.search(f,false,0,false,selected,false,excludeIds);resolve({...result,...unseen,total:this.store.search(f,false,0,false,selected).total,remaining:Math.max(0,unseen.total-unseen.items.length),filters:f,sessionId:session?.id});},e=>{if(settled)return;settled=true;cleanup();reject(e);});
       if(signal?.aborted)abort();
     });
   }
-  async fetchPage(f,{signal,onProgress,sources:onlySources,fresh}){
-    const key=scopeKey(f),state=fresh?{sources:{}}:this.coverage(f),sources=this.store.sources().filter(s=>s.enabled&&s.adapter&&(!onlySources||onlySources.includes(s.id)));
+  async fetchPage(f,{signal,onProgress,sources:onlySources,fresh,session}){
+    const key=scopeKey(f),state=session?.state||(fresh?{sources:{}}:this.coverage(f)),sources=this.store.sources().filter(s=>s.enabled&&s.adapter&&(!onlySources||onlySources.includes(s.id)));
     const settled=await Promise.allSettled(sources.map(async source=>{
       const groups=f.makes?.length?f.makes:[null];let cursor=state.sources[source.id]||{page:1,group:0,done:false,received:0,pages:0};
       if(cursor.done)return {source:source.name,done:true,received:0};
@@ -59,6 +60,10 @@ class Market {
           limited=Number.isFinite(last)&&total>last*r.docs.length;nextURL=end?null:buildURL(f,cursor.page+1);
           // Preserve previously inspected descriptions when the search API omits them.
           ads=ads.map(ad=>{const old=this.store.rows('SELECT data FROM listings WHERE id=?',[source.id+':'+ad.id])[0];return old?{...JSON.parse(old.data),...ad,description:ad.description||JSON.parse(old.data).description}:ad;});
+        }else if(source.adapter==='kvd-public'){
+          const parsed=kvdPage(await this.request(kvdURL(f,cursor.page,groups[cursor.group]),{signal}));ads=parsed.listings;total=parsed.total;signature=ads.map(x=>x.id).join(',');nextURL=parsed.count>=20?kvdURL(f,cursor.page+1,groups[cursor.group]):null;
+        }else if(source.adapter==='riddermark-public'){
+          const url=riddermarkURL(f,cursor.page,groups[cursor.group]),html=await this.request(url,{kind:'html',signal});const parsed=riddermarkPage(html);ads=parsed.listings;signature=ads.map(x=>x.id).join(',');nextURL=parsed.count>=39?riddermarkURL(f,cursor.page+1,groups[cursor.group]):null;
         }else{
           const url=cursor.nextURL||listURL(source.id,f,groups[cursor.group]);const html=await this.request(url,{kind:'html',signal});const links=listLinks(html,source.id);signature=links.join(',');
           if(!links.length&&!/0\s+(?:Personbilar|bilar|träffar|resultat|annonser)/i.test(html))throw new Error('Annonslistan kunde inte läsas.');
@@ -77,17 +82,19 @@ class Market {
         }
         if(signal.aborted)throw cancelled();if(signature&&signature===cursor.signature)nextURL=null;
         const valid=ads.filter(ad=>{try{normalizeListing(ad,source);return true;}catch{return false;}});
-        if(source.adapter==='blocket-public')this.store.importSnapshot(source,{schemaVersion:1,complete:false,listings:valid});
+        if(['blocket-public','riddermark-public','kvd-public'].includes(source.adapter))this.store.importSnapshot(source,{schemaVersion:1,complete:false,listings:valid});
         let next={...cursor,page:cursor.page+1,nextURL,signature,total:total??cursor.total,pages:cursor.pages+1,received:cursor.received+valid.length,error:null,limited,done:!nextURL};
         if(source.adapter!=='blocket-public'&&!nextURL&&cursor.group<groups.length-1)next={...next,group:cursor.group+1,page:1,nextURL:null,signature:null,done:false};
-        state.sources[source.id]=next;if(!fresh)this.store.setSetting(key,state);this.store.sourceStatus(source.id,null,true);
+        state.sources[source.id]=next;if(!fresh&&!session)this.store.setSetting(key,state);this.store.sourceStatus(source.id,null,true);
         onProgress({type:'source',source:source.name,status:'done',label:source.name+' · '+valid.length+' annonser',received:valid.length,page:cursor.page});
-        return {source:source.name,received:valid.length,done:next.done,total:next.total||null,limited};
-      }catch(e){if(e.name==='AbortError')throw e;this.store.sourceStatus(source.id,e.message);state.sources[source.id]={...cursor,error:e.message};if(!fresh)this.store.setSetting(key,state);onProgress({type:'source',source:source.name,status:'error',label:source.name+' kunde inte hämtas',error:e.message});return {source:source.name,error:e.message,done:false};}
+        const listingIds=valid.map(ad=>source.id+':'+ad.id);
+        const vehicleIds=this.store.rows('SELECT DISTINCT vehicle_id FROM listings WHERE id IN (SELECT value FROM json_each(?))',[JSON.stringify(listingIds)]).map(row=>row.vehicle_id);
+        return {source:source.name,received:valid.length,done:next.done,total:next.total||null,limited,vehicleIds};
+      }catch(e){if(e.name==='AbortError')throw e;this.store.sourceStatus(source.id,e.message);state.sources[source.id]={...cursor,error:e.message};if(!fresh&&!session)this.store.setSetting(key,state);onProgress({type:'source',source:source.name,status:'error',label:source.name+' kunde inte hämtas',error:e.message});return {source:source.name,error:e.message,done:false};}
     }));
-    if(!fresh)this.store.setSetting(key,state);
+    if(!fresh&&!session)this.store.setSetting(key,state);
     if(signal.aborted)throw cancelled();const rejected=settled.find(x=>x.status==='rejected');if(rejected)throw rejected.reason;
-    return {coverage:state.sources,hasMore:sources.some(s=>!state.sources[s.id]?.done&&!state.sources[s.id]?.error),sourceWarning:settled.map(x=>x.value).filter(x=>x.error).map(x=>x.source+': '+x.error).join(' ')||null,outcomes:settled.map(x=>x.value)};
+    return {coverage:state.sources,vehicleIds:[...new Set(settled.flatMap(x=>x.value.vehicleIds||[]))],hasMore:sources.some(s=>!state.sources[s.id]?.done&&!state.sources[s.id]?.error),sourceWarning:settled.map(x=>x.value).filter(x=>x.error).map(x=>x.source+': '+x.error).join(' ')||null,outcomes:settled.map(x=>x.value)};
   }
   async inspect(id,{signal,onProgress=()=>{}}={}){
     const before=this.store.detail(id),checks=[];
@@ -101,6 +108,8 @@ class Market {
           const r=await this.request('https://blocket-api.se/v1/ad/car?id='+encodeURIComponent(old.id),{signal});
           if(String(r.ad_id)!==String(old.id)||!r.title||!r.price)throw new Error('Originalannonsen kunde inte verifieras.');
           const price=Number(String(r.price).replace(/[^0-9]/g,''));ad={...old,title:r.title,price:price>0?price:old.price,description:r.equipment?.length?'Utrustning enligt annonsen:\n'+r.equipment.join(' · '):old.description};
+        }else if(source.adapter==='riddermark-public'){
+          ad=riddermarkDetail(await this.request(old.url,{kind:'html',signal}),old.url);if(!ad)throw new Error('Originalannonsen saknar ett aktivt försäljningspris.');
         }else ad=parseDetail(source.id,await this.request(old.url,{kind:'html',signal}),old.url);
         if(ad?.inactive)this.store.removeListing(offer.id);else if(ad)this.store.importSnapshot(source,{schemaVersion:1,complete:false,listings:[{...ad,publishedAt:old.publishedAt}]});else throw new Error('Originalannonsen saknar verifierbara biluppgifter.');
         checks.push({source:source.name,status:ad.inactive?'removed':'verified'});onProgress({type:'source',source:source.name,status:'done',label:source.name+' · annonsen läst'});
