@@ -32,7 +32,7 @@ exported=onnx.load(str(output/'model-fp32.onnx'))
 onnx.save_model(exported,str(output/'model-fp32.onnx'),save_as_external_data=True,all_tensors_to_one_file=True,location='model-fp32.data',size_threshold=1024)
 del exported
 print('Quantizing weights for local inference',flush=True)
-quantize_dynamic(str(output/'model-fp32.onnx'),str(output/'model.onnx'),weight_type=QuantType.QInt8,per_channel=True,op_types_to_quantize=['MatMul','Gather'])
+quantize_dynamic(str(output/'model-fp32.onnx'),str(output/'model.onnx'),weight_type=QuantType.QInt8,per_channel=True,reduce_range=True,op_types_to_quantize=['MatMul','Gather'])
 import onnxruntime as ort
 import numpy as np
 session=ort.InferenceSession(str(output/'model.onnx'),providers=['CPUExecutionProvider'])
@@ -41,7 +41,7 @@ sim=float(np.dot(expected[0],actual[0])/(np.linalg.norm(expected[0])*np.linalg.n
 assert sim>.98,sim
 print(json.dumps({'model':'google/embeddinggemma-2','cosineAgreement':sim,'bytes':(output/'model.onnx').stat().st_size}),flush=True)
 tokenizer.save_pretrained(str(output))
-(output/'manifest.json').write_text(json.dumps({'model':'google/embeddinggemma-2','dimensions':256,'maxTokens':256,'promptQuery':'task: search result | query: ','promptDocument':'title: none | text: ','license':'Apache-2.0','quantization':'int8','cosineAgreement':sim},indent=2))
+(output/'manifest.json').write_text(json.dumps({'model':'google/embeddinggemma-2','dimensions':256,'maxTokens':256,'promptQuery':'task: search result | query: ','promptDocument':'title: none | text: ','license':'Apache-2.0','quantization':'int8-reduced-range','cosineAgreement':sim},indent=2))
 
 import urllib.request
 with urllib.request.urlopen('https://www.apache.org/licenses/LICENSE-2.0.txt') as response: (output/'LICENSE').write_bytes(response.read())
