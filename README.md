@@ -6,7 +6,7 @@ AI använder **Nemotron 3 Super (free)** med **Nemotron 3 Ultra (free)** som res
 
 ## Använd appen
 
-- Mac: packa upp rätt Mac-zip och flytta `CarCrow.app` till Program. Apple Silicon använder arm64; äldre Intel-Mac använder x64.
+- Mac: packa upp rätt Mac-zip och flytta `CarCrow.app` till Program. Mac-versionen kräver Apple Silicon (M1 eller senare).
 - Windows 10/11, 64 bit: kör `CarCrow-Windows-Setup.exe`, eller packa upp hela `CarCrow-Windows.zip` och starta `CarCrow.exe` med alla filer bredvid.
 - Skriv exempelvis ”BMW eller Audi under 150 000 kr, automat och max 15 000 mil”. Stoppa-knappen avbryter AI-anrop och pågående källhämtning.
 - Fortsätt i samma chatt. Välj bilar för jämförelse, spara favoriter eller bevaka sökningen. Öppna ett bilkort för originalannonser och verklig prishistorik.
@@ -42,7 +42,7 @@ npm run build
 npm start
 ```
 
-`npm run pack:mac` bygger arm64/x64 på Mac. `npm run pack:win` bygger Windows-zip och `npm run dist:win` bygger NSIS. Alla paket och CI-byggen utesluter äldre privata nyckelfiler. Workern utvecklas och publiceras från `worker/`; dess hemligheter hanteras med Wrangler. Se [uppdateringar och publicering](docs/UPPDATERINGAR.md).
+`npm run pack:mac` bygger arm64 på Mac. `npm run pack:win` bygger Windows-zip och `npm run dist:win` bygger NSIS. Alla paket och CI-byggen utesluter äldre privata nyckelfiler. Workern utvecklas och publiceras från `worker/`; dess hemligheter hanteras med Wrangler. Se [uppdateringar och publicering](docs/UPPDATERINGAR.md).
 
 `node scripts/smoke.cjs` testar det verkliga Electron-gränssnittet med tydligt märkta exempelbilar, inklusive att ändringar av AI-nyckel och modell avvisas. AI-/marknadstesterna använder separata deterministiska testfixturer. Live-tester körs separat med verkliga källor och den fasta gratismodellen. För Windows finns [kontrollskript och CI](docs/WINDOWS_TEST.md). Se [verifieringsrapporten](docs/VERIFIERING.md) för vad som faktiskt har körts.
 

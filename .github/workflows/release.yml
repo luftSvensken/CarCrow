@@ -42,9 +42,6 @@ jobs:
           - runner: macos-15
             arch: arm64
             asset: CarCrow-Mac-Apple-Silicon.zip
-          - runner: macos-15-intel
-            arch: x64
-            asset: CarCrow-Mac-Intel.zip
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
@@ -123,7 +120,6 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           test -f release/CarCrow-Mac-Apple-Silicon.zip
-          test -f release/CarCrow-Mac-Intel.zip
           test -f release/CarCrow-Windows.zip
           test -f release/CarCrow-Windows-Setup.exe
           gh release create "v$VERSION" release/* --target "$GITHUB_SHA" --title "CarCrow $VERSION" --generate-notes --fail-on-no-commits

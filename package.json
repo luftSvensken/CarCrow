@@ -11,7 +11,7 @@
     "build": "tsc --noEmit && vite build",
     "start": "electron .",
     "test": "node --test tests/*.test.cjs",
-    "pack:mac": "npm run build && electron-builder --mac dir --arm64 --x64 --publish never",
+    "pack:mac": "npm run build && electron-builder --mac dir --arm64 --publish never",
     "pack:win": "npm run build && electron-builder --win zip --x64 --publish never",
     "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never"
   },

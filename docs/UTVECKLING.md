@@ -10,6 +10,6 @@
 - AI använder fasta gratismodeller genom Cloudflare: Nemotron 3 Super, med Ultra som reserv. Inga API-nycklar ingår i appen.
 - Webbsökning använder Tavilys officiella API och läser källor. Svar har klickbara källhänvisningar och skiljer modellrisk från bilens eget skick. Fel för andra motorer och karosser får inte tillskrivas bilen.
 - Uppdateringar hämtas automatiskt och installeras när appen avslutas. Publika GitHub-uppdateringar kräver ingen inloggning. Paket verifieras med SHA-256 och filstorlek. Appbytet bevarar separat lagrade användardata och återställer den tidigare appen om uppstarten misslyckas.
-- Release CarCrow bygger och provar Windows x64, Mac Apple Silicon och Mac Intel före publicering.
+- Release CarCrow bygger och provar Windows x64, Mac Apple Silicon före publicering.
 
 Aktuella testresultat beskrivs i [VERIFIERING.md](VERIFIERING.md). Publicering beskrivs i [UPPDATERINGAR.md](UPPDATERINGAR.md).

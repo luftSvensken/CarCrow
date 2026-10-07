@@ -9,7 +9,7 @@ En gräns på 18 anrop per IP och minut minskar missbruk; OpenRouters delade gra
 1. Ändra `version` i `package.json` och kör `npm install --package-lock-only`.
 2. Skicka ändringen till GitHub och låt kontrollflödena testa den.
 3. Kör flödet **Release CarCrow** i GitHub Actions för önskad version.
-4. Flödet bygger och testar Mac Apple Silicon, Mac Intel och Windows innan samma version publiceras i GitHub Releases.
+4. Flödet bygger och testar Mac Apple Silicon och Windows innan samma version publiceras i GitHub Releases.
 
 Appen kontrollerar den publika senaste stabila releasen. Vid start och var sjätte timme hämtas en ny verifierad version i bakgrunden. Den installeras när användaren avslutar CarCrow. Den nya appen kontrollerar att React-gränssnittet startar i ett dolt fönster och avslutas sedan; nästa vanliga start öppnar den nya versionen. Användaren kan även välja Installera nu i Inställningar → Uppdateringar. Avbrutna hämtningar installeras aldrig. Ett färdigt paket återanvänds efter omstart först sedan både aktuell GitHub-metadata och filens kontrollsumma verifierats igen. Hämtningen måste stämma med GitHubs SHA-256 och exakta filstorlek. Chattar, bevakningar och sparade bilar ligger i användarens separata datamapp. Mac installerar genom att byta appmapp och återställa den tidigare appen om den nya inte startar. Windows installerar med NSIS i samma installationsmapp.
 
