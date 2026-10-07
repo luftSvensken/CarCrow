@@ -78,6 +78,10 @@ jobs:
         run: |
           if [ "$TARGET_ARCH" = arm64 ]; then APP=release/mac-arm64/CarCrow.app; else APP=release/mac/CarCrow.app; fi
           /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP" "release/$ASSET"
+      - name: Verify Mac archive signatures and tamper protection
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: node scripts/verify-mac-package.cjs "release/$ASSET"
       - name: Verify actual Mac update and preserved user data
         env:
           CARCROW_AUTOMATIC_UPDATE: '1'

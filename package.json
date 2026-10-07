@@ -1,6 +1,6 @@
 {
   "name": "carcrow",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "Svensk bilsökning för Windows och Mac",
   "author": "CarCrow",
@@ -58,7 +58,12 @@
       "icon": "assets/icon.icns",
       "target": [
         "dir"
-      ]
+      ],
+      "identity": "-",
+      "forceCodeSigning": true,
+      "hardenedRuntime": true,
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.plist"
     },
     "win": {
       "icon": "assets/icon.ico",
