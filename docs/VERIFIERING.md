@@ -7,10 +7,11 @@ Kontrollerad 7 oktober 2026. Slutliga rapporter och bilder finns i leveransens `
 - Mac Apple Silicon- och Intel-paketen passerar 15 gränssnittskontroller med den verkliga lokala modellen. Fokusram, kråkhopp, bevakningarnas annonser, rekommendationer, teman och uppdateringsknappar ingår.
 - Faktiska Mac-appbyten på Apple Silicon och Intel via Rosetta i isolerade installationer passerar. Den ersättande appens React-gränssnitt startar och sparad bil, chatt, bevakning och tema bevaras.
 - Blocket/Bilweb i ett verkligt test gav första kortet efter cirka 0,5 sekunder och båda källorna efter cirka 1,4 sekunder. Mättiden beror på nätverk och källor.
+- Det kompletta livetestet i det paketerade Mac-gränssnittet passerar: Blocket, Bytbil, Wayke, Bilweb, Kvdbil och Riddermark svarar utan fel. OpenRouter Free strömmar 369 innehållsdelar och ger ett kort svar från det verkliga, strikt filtrerade bilurvalet.
 - Verklig strömning från Cloudflare/OpenRouter Free har verifierats. Tavily-sökningen läser faktiska rapporter och ger ursprungliga länkar. Appen returnerar osäkerhet när underlaget inte styrker den exakta varianten.
 - Produktionsberoenden har inga kända sårbarheter enligt npm audit vid kontrollen.
 
-Windows-uppdatering och publicering verifieras i projektets byggflöden före slutleveransen. Denna rapport uppdateras med körningarnas slutresultat.
+Windows x64 passerar 68 tester (67 data- och agenttester samt PowerShell-parsern), sex Worker-tester och 15 UI-kontroller vardera för portabel och faktiskt installerad app. NSIS-installation, verklig uppdatering, omstart och bevarad bil, chatt, bevakning och tema passerar i [körning 37596183750](https://github.com/luftSvensken/CarCrow/actions/runs/37596183750). Den slutliga publiceringen testar samtliga paket igen innan de blir tillgängliga.
 
 ## Praktiska gränser
 
