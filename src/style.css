@@ -13,3 +13,14 @@
 .recommendation-reason{font-size:10px;color:var(--accent-text);display:block;margin-bottom:7px}
 .history-mobile{display:none}.history-dialog{padding:15px 26px 25px}.history-dialog button{display:flex;align-items:center;justify-content:space-between;text-align:left;gap:16px;padding:14px 12px;border-radius:10px;width:100%;font-size:14px}.history-dialog button:hover{background:var(--soft)}.history-dialog button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.history-dialog p{padding:20px;color:var(--muted);font-size:13px}@media(max-width:1050px){.history-mobile{display:grid;margin-top:23px}}
 .modal-backdrop{transition:opacity .18s var(--ease)}.modal-closing{opacity:0;pointer-events:none}.modal-closing .modal{transform:translateY(6px) scale(.985);transition:transform .18s var(--ease)}
+
+.text-search input:focus-visible{outline:none;box-shadow:none}.text-search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 12%,transparent)}
+.crow-easter-egg{display:grid;place-items:center;width:76px;height:76px;margin:0 auto 18px;padding:12px;border-radius:50%;color:var(--text);cursor:pointer}.welcome h1{margin-bottom:32px}
+.crow-jumping{animation:crow-hop .85s cubic-bezier(.2,.7,.25,1) both}.crow-jumping .crow-wing{transform-box:fill-box;transform-origin:90% 40%;animation:wing-flap .28s ease-in-out 3}
+@keyframes crow-hop{0%,100%{transform:translateY(0) rotate(0)}20%{transform:translateY(3px) scaleY(.9)}48%{transform:translateY(-18px) rotate(-8deg)}70%{transform:translateY(-3px) rotate(3deg)}86%{transform:translateY(2px) scaleY(.96)}}
+@media(prefers-reduced-motion:reduce){.crow-jumping,.crow-jumping .crow-wing{animation:none}}
+
+.watch-group{margin-bottom:24px}.watch-picks{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:14px}.watch-picks .car-card{min-width:0}.watch-group .watch-card{margin-bottom:0}
+.web-references{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}.web-references button{display:flex;align-items:center;gap:6px;max-width:220px;padding:6px 9px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:11px}.web-references button span{color:var(--accent)}
+
+.update-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px}.update-settings progress{width:100%;margin-top:16px;accent-color:var(--accent)}

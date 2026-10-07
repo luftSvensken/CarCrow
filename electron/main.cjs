@@ -5,8 +5,11 @@ const {requestJSON}=require('./services.cjs');
 const {seedDemo}=require('./demo.cjs');
 const {Market}=require('./market.cjs');const {CarAgent}=require('./agent.cjs');
 const {SearchSessions}=require('./search-sessions.cjs');const {WatchChecker}=require('./watches.cjs');
+const {Updater}=require('./updater.cjs');
 const {EmbeddingRuntime}=require('./embedding-runtime.cjs');const {Recommendations}=require('./recommendations.cjs');
-let store,market,sessions,watchChecker,recommendations,embedding,agent,win,quitting=false,provisionedKey=null;
+let store,market,sessions,watchChecker,recommendations,embedding,agent,updater,win,quitting=false,provisionedKey=null,lastOpen=null;
+const marketRequests=new Map();
+const sendMarket=e=>{if(win&&!win.isDestroyed())win.webContents.send('carcrow:market',e);};
 const sourceCatalog=[
   {id:'blocket',name:'Blocket',adapter:'blocket-public',hosts:['www.blocket.se','blocket.se'],docs:'https://blocket-api.se'},
   {id:'bytbil',name:'Bytbil',adapter:'public-html',hosts:['www.bytbil.com','bytbil.com'],docs:'https://www.bytbil.com'},
@@ -25,19 +28,23 @@ async function dispatch(action,p={}){
   if(!p||typeof p!=='object'||Array.isArray(p))throw new Error('Ogiltig begäran.');
   const demo=demoMode();
   switch(action){
-    case 'bootstrap':return {stats:{...store.stats(demo),aiConfigured:!!provisionedKey,model:'openrouter/free'},facets:store.facets(demo),theme:store.setting('theme')||'system',dark:nativeTheme.shouldUseDarkColors,demo,sources:store.sources().filter(s=>!s.demo).map(sourcePublic),watches:store.watches(demo),checkingWatches:!!watchChecker.running,platform:process.platform};
+    case 'bootstrap':return {stats:{...store.stats(demo),aiConfigured:!demoMode()&&!!require('./ai-config.json').endpoint,model:'openrouter/free'},facets:store.facets(demo),theme:store.setting('theme')||'system',dark:nativeTheme.shouldUseDarkColors,demo,sources:store.sources().filter(s=>!s.demo).map(sourcePublic),watches:store.watches(demo),checkingWatches:!!watchChecker.running,platform:process.platform,updates:updater.public(),version:app.getVersion()};
+    case 'uiReady':updater.acknowledge();return true;
     case 'chats':return agent.list();
     case 'chat':return agent.get(p.id);
     case 'chatDelete':agent.remove(p.id);changed();return true;
-    case 'agentStart':return agent.start(p);
+    case 'agentStart':return agent.start({...p,ids:p.ids?.length?p.ids:/den här|denna bil|dess (?:fel|motor)/i.test(p.text||'')&&lastOpen&&Date.now()-lastOpen.at<600000?[lastOpen.id]:[]});
     case 'agentStop':agent.stop(p.runId);return true;
-    case 'marketStart':{
-      if(demo)return {...store.search(p.filters,true),filters:p.filters,hasMore:false};
-      const result=await sessions.start(p.filters,{onProgress:e=>{if(win&&!win.isDestroyed())win.webContents.send('carcrow:market',e);}});changed();return result;
-    }
+    case 'marketCancel':marketRequests.get(p.requestId)?.abort();return true;
+    case 'marketStart':
     case 'marketPage':{
-      if(demo)return {...store.search(p.filters,true,0,false,null,false,p.excludeIds||[]),filters:p.filters,hasMore:false};
-      const result=await (sessions.sessions.has(p.sessionId)?sessions.next(p.sessionId,p.excludeIds||[],{onProgress:e=>{if(win&&!win.isDestroyed())win.webContents.send('carcrow:market',e);}}):sessions.start(p.filters,{excludeIds:p.excludeIds||[],onProgress:e=>{if(win&&!win.isDestroyed())win.webContents.send('carcrow:market',e);}}));changed();return result;
+      const filters=validateFilters(p.filters);if(action==='marketStart'&&p.track)store.recordPreference('search',{filters});
+      if(demo)return {...store.search(filters,true,0,false,null,false,p.excludeIds||[]),filters,hasMore:false};
+      const requestId=p.requestId||crypto.randomUUID();if(typeof requestId!=='string'||!/^[-a-zA-Z0-9]{1,64}$/.test(requestId))throw new Error('Ogiltig sökbegäran.');
+      const controller=new AbortController();marketRequests.set(requestId,controller);
+      const options={signal:controller.signal,excludeIds:p.excludeIds||[],onProgress:e=>sendMarket({...e,requestId}),onResults:result=>sendMarket({type:'results',requestId,result})};
+      try{const result=await (action==='marketPage'&&sessions.sessions.has(p.sessionId)?sessions.next(p.sessionId,p.excludeIds||[],options):sessions.start(filters,options));changed();return result;}
+      finally{marketRequests.delete(requestId);}
     }
     case 'marketNext':{
       if(demo)return {...store.search(p.filters,true,p.page||0),filters:p.filters,hasMore:false};
@@ -46,11 +53,15 @@ async function dispatch(action,p={}){
     case 'marketCoverage':return market.coverage(p.filters);
     case 'searchNext':{const r=store.search(p.filters,demo,0,!!p.saved,null,false,p.excludeIds||[]);return {...r,total:store.search(p.filters,demo,0,!!p.saved).total,remaining:r.total-r.items.length,filters:p.filters,hasMore:!!p.hasMore};}
     case 'search':{const result=store.search(p.filters,demo,p.page||0,!!p.saved,p.ids||null);if(p.compare)result.items=result.items.map(x=>({...x,comparison:store.comparison(x.id,demo)})).sort((a,b)=>(b.comparison.percentBelow??-Infinity)-(a.comparison.percentBelow??-Infinity));return result;}
-    case 'detail':return store.detail(p.id,demo);
+    case 'detail':{const car=store.detail(p.id,demo);lastOpen={id:car.id,at:Date.now()};store.recordPreference('open',{id:car.id,text:require('./recommendations.cjs').document(car)});return car;}
+    case 'compareSignal':{const car=store.detail(p.id,demo);store.recordPreference('compare',{id:car.id,text:require('./recommendations.cjs').document(car)});return true;}
     case 'bookmark':{const saved=store.bookmark(p.id);changed();return saved;}
     case 'archive':return store.archived(demo);
     case 'restoreBookmark':store.restoreBookmark(p.id);changed();return true;
-    case 'recommendations':return await recommendations.get();
+    case 'recommendations':return await recommendations.get({onResults:result=>sendMarket({type:'results',requestId:p.requestId,result})});
+    case 'updateCheck':return await updater.check();
+    case 'updateInstall':return await updater.install();
+    case 'updateCancel':updater.cancel();return true;
     case 'settings':{
       if(Object.hasOwn(p,'key')||Object.hasOwn(p,'model'))throw new Error('Appens AI-konfiguration är låst.');
       if(p.theme!==undefined){if(!['light','dark','system'].includes(p.theme))throw new Error('Okänt färgtema.');store.setSetting('theme',p.theme);nativeTheme.themeSource=p.theme;}
@@ -72,11 +83,12 @@ async function dispatch(action,p={}){
       if(fs.statSync(r.filePaths[0]).size>20*1024*1024)throw new Error('Filen är för stor (max 20 MB).');
       const result=store.importSnapshot(source,JSON.parse(fs.readFileSync(r.filePaths[0],'utf8')));store.sourceStatus(source.id,null,true);changed();return result;
     }
-    case 'checkWatches':return demo?{outcomes:[]}:await watchChecker.check();
-    case 'watch':store.addWatch(p.name,p.filters,demo);changed();return true;
+    case 'checkWatches':return await watchChecker.check();
+    case 'watch':store.addWatch(p.name,p.filters,demo);changed();watchChecker.check().catch(()=>{});return true;
     case 'unwatch':store.removeWatch(p.id);changed();return true;
     case 'markWatch':store.markWatch(p.id);changed();return true;
-    case 'openOffer':{const ad=store.detail(p.id,demo);if(ad.demo)throw new Error('Testannonser har ingen originalannons.');const offer=ad.offers.find(o=>o.id===p.offerId);if(!offer)throw new Error('Annonsen är inte aktiv.');await shell.openExternal(httpsURL(offer.url));return true;}
+    case 'openOffer':{const ad=store.detail(p.id,demo);if(ad.demo)throw new Error('Testannonser har ingen originalannons.');const offer=ad.offers.find(o=>o.id===p.offerId);if(!offer)throw new Error('Annonsen är inte aktiv.');store.recordPreference('original',{id:ad.id,text:require('./recommendations.cjs').document(ad)});await shell.openExternal(httpsURL(offer.url));return true;}
+    case 'openWebSource':{const chat=agent.get(p.chatId);const source=chat?.messages.find(m=>m.id===p.messageId)?.sources?.find(s=>s.id===p.sourceId);if(!source)throw new Error('Okänd webbreferens.');await shell.openExternal(httpsURL(source.url));return true;}
     case 'docs':{const s=sourceCatalog.find(s=>s.id===p.id);if(!s)throw new Error('Okänd källa.');await shell.openExternal(s.docs);return true;}
     default:throw new Error('Okänd funktion.');
   }
@@ -101,22 +113,24 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     store.setSetting('model','openrouter/free');
     store.setSetting('background',false);store.setSetting('demo',demoMode());nativeTheme.themeSource=store.setting('theme')||'system';
     if(!demoMode()){store.db.run('DELETE FROM listings WHERE demo=1');store.db.run('DELETE FROM sources WHERE id IN (SELECT id FROM sources WHERE json_extract(config,\'$.demo\')=1)');}
-    if(process.env.CARCROW_TEST_DEMO!=='1'){try{provisionedKey=require('./provisioned-key.cjs');}catch(e){if(e.code!=='MODULE_NOT_FOUND')throw e;}}
+
     for(const s of sourceCatalog){const existing=store.sources().find(x=>x.id===s.id);store.setSource({...existing,...s,enabled:s.adapter&&!existing?.adapter?true:existing?.enabled??!!s.adapter,mediaAllowed:!!s.adapter,feedURL:s.adapter?s.docs:existing?.feedURL||'',intervalMinutes:60,retentionDays:7});}
     if(process.env.CARCROW_TEST_DEMO==='1'){store.setSetting('demo',true);seedDemo(store);}
     store.db.run("DELETE FROM sources WHERE id='facebook'");
     store.purgeExpired();
-    market=new Market(store);sessions=new SearchSessions(store,market);watchChecker=new WatchChecker({store,sessions,changed});agent=new CarAgent({store,market,sessions,key:aiKey,demo:demoMode,emit:e=>{if(win&&!win.isDestroyed())win.webContents.send('carcrow:agent',e);}});
+    market=new Market(store);sessions=new SearchSessions(store,market);agent=new CarAgent({store,market,sessions,key:aiKey,demo:demoMode,emit:e=>{if(win&&!win.isDestroyed())win.webContents.send('carcrow:agent',e);}});
     const recommendationStatus=e=>{if(win&&!win.isDestroyed())win.webContents.send('carcrow:market',{source:'recommendations',label:e.label,status:e.ready?'done':'running'});};
-    embedding=new EmbeddingRuntime(path.join(app.getPath('userData'),'recommendations'),{status:recommendationStatus,modelDir:app.isPackaged?path.join(process.resourcesPath,'models/embeddinggemma-2'):path.join(__dirname,'../models/embeddinggemma-2')});recommendations=new Recommendations({store,sessions,runtime:embedding,status:recommendationStatus,demo:demoMode});
+    embedding=new EmbeddingRuntime(path.join(app.getPath('userData'),'recommendations'),{status:recommendationStatus,modelDir:app.isPackaged?path.join(process.resourcesPath,'models/embeddinggemma-2'):path.join(__dirname,'../models/embeddinggemma-2')});recommendations=new Recommendations({store,sessions,runtime:embedding,status:recommendationStatus,demo:demoMode});watchChecker=new WatchChecker({store,sessions,recommendations,changed,demo:demoMode});
     ipcMain.handle('carcrow:call',async(event,action,payload)=>{
       if(!win||event.sender!==win.webContents||event.senderFrame!==win.webContents.mainFrame||event.senderFrame.url!==require('node:url').pathToFileURL(path.join(__dirname,'../dist/index.html')).href)return {ok:false,error:'Åtkomst nekad.'};
       try{return {ok:true,data:await dispatch(action,payload)};}catch(e){return {ok:false,error:e.message||'Något gick fel. Försök igen.'};}
     });
     Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'CarCrow',submenu:[{role:'about'},{type:'separator'},{label:'Visa CarCrow',click:()=>win.show()},{role:'quit'}]},{label:'Redigera',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},{label:'Fönster',submenu:[{role:'minimize'},{role:'zoom'},{role:'close'}]}]));
+    updater=new Updater({app,changed});
     createWindow();
+    if(app.isPackaged&&!demoMode())updater.check().catch(()=>{});
     if(!demoMode())watchChecker.check().catch(()=>{});
     app.on('activate',()=>{if(win&&!win.isDestroyed())win.show();else createWindow();if(!demoMode())watchChecker.check().catch(()=>{});});
   }).catch(e=>{dialog.showErrorBox('CarCrow kunde inte starta',e.message);app.quit();});
-  app.on('before-quit',()=>{quitting=true;agent?.active?.controller.abort();embedding?.close();});app.on('window-all-closed',()=>app.quit());
+  app.on('before-quit',()=>{quitting=true;agent?.active?.controller.abort();embedding?.close();for(const request of marketRequests.values())request.abort();store?.db.close();});app.on('window-all-closed',()=>app.quit());
 }

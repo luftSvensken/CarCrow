@@ -9,3 +9,11 @@ playwright-report/
 electron/provisioned-key.cjs
 
 models/embeddinggemma-2/
+worker/node_modules/
+worker/.wrangler/
+worker/.dev.vars
+worker/.env
+.private/
+*.pem
+.build-cache-old/
+worker/worker-configuration.d.ts

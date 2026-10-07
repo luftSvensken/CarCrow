@@ -70,6 +70,7 @@ class Store {
       const SQL=await initSqlJs({locateFile: f=>path.join(path.dirname(require.resolve('sql.js/dist/sql-wasm.js')),f)});
       store.db=new SQL.Database(file&&fs.existsSync(file)?fs.readFileSync(file):undefined);
     }
+    if(store.sqlite)store.db.run('PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;');
     store.db.run(`PRAGMA foreign_keys=ON;
       CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY,config TEXT NOT NULL,last_sync TEXT,error TEXT);
@@ -83,6 +84,8 @@ class Store {
       CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT,listing_id TEXT,kind TEXT,at TEXT,old_price INTEGER,new_price INTEGER);
       CREATE TABLE IF NOT EXISTS bookmarks(vehicle_id TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS bookmark_archive(vehicle_id TEXT PRIMARY KEY,removed_at TEXT NOT NULL,expires_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS preference_events(id INTEGER PRIMARY KEY AUTOINCREMENT,kind TEXT NOT NULL,data TEXT NOT NULL,at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS watch_recommendations(watch_id TEXT PRIMARY KEY,data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS watch_results(watch_id TEXT PRIMARY KEY,vehicle_ids TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS watch_checks(watch_id TEXT PRIMARY KEY,checked_at TEXT,error TEXT);
       CREATE TABLE IF NOT EXISTS watches(id TEXT PRIMARY KEY,name TEXT,filters TEXT,demo INTEGER,created TEXT,seen TEXT);`);
@@ -205,14 +208,22 @@ class Store {
     this.db.run('INSERT OR IGNORE INTO bookmarks VALUES (?)',[id]);this.db.run('DELETE FROM bookmark_archive WHERE vehicle_id=?',[id]);this.save();return true;
   }
   purgeArchive(now=Date.now()) {this.db.run('DELETE FROM bookmark_archive WHERE expires_at<=?',[new Date(now).toISOString()]);this.save();}
-  watchChecked(id,error=null,ids) {if(ids)this.db.run('INSERT OR REPLACE INTO watch_results VALUES (?,?)',[id,JSON.stringify(ids)]);this.db.run('INSERT OR REPLACE INTO watch_checks VALUES (?,?,?)',[id,new Date().toISOString(),error]);this.save();}
+  recordPreference(kind,data){
+    if(!['search','open','compare','original'].includes(kind))throw new Error('Okänd användningssignal.');
+    const json=JSON.stringify(data),previous=this.rows('SELECT data,at FROM preference_events WHERE kind=? ORDER BY id DESC LIMIT 1',[kind])[0];
+    if(previous?.data===json&&Date.now()-Date.parse(previous.at)<3600000)return;
+    this.db.run('INSERT INTO preference_events(kind,data,at) VALUES (?,?,?)',[kind,json,new Date().toISOString()]);
+    this.db.run('DELETE FROM preference_events WHERE id NOT IN (SELECT id FROM preference_events ORDER BY id DESC LIMIT 120)');this.save();
+  }
+  watchPicks(id,items){if(!this.rows('SELECT id FROM watches WHERE id=?',[id]).length)return;this.db.run('INSERT OR REPLACE INTO watch_recommendations VALUES (?,?)',[id,JSON.stringify(items.map(c=>({id:c.id,recommendation:c.recommendation})))]);this.save();}
+  watchChecked(id,error=null,ids) {if(!this.rows('SELECT id FROM watches WHERE id=?',[id]).length)return;if(ids)this.db.run('INSERT OR REPLACE INTO watch_results VALUES (?,?)',[id,JSON.stringify(ids)]);this.db.run('INSERT OR REPLACE INTO watch_checks VALUES (?,?,?)',[id,new Date().toISOString(),error]);this.save();}
   excludeListing(id) {this.db.run('UPDATE listings SET active=0 WHERE id=?',[id]);this.save();}
   removeListing(id) {const row=this.rows('SELECT * FROM listings WHERE id=? AND active=1',[id])[0];if(!row)return;const now=new Date().toISOString();this.db.run('UPDATE listings SET active=0,last_seen=? WHERE id=?',[now,id]);this.db.run('INSERT INTO events(listing_id,kind,at,old_price,new_price) VALUES (?,?,?,?,NULL)',[id,'removed',now,row.price]);this.save();}
   facets(demo=false) {const rows=this.rows('SELECT DISTINCT make,model FROM listings WHERE active=1 AND demo=? ORDER BY make,model',[demo?1:0]);return {makes:[...new Set(rows.map(x=>x.make))],models:rows,fuels:FUELS};}
   stats(demo=false) {return {...this.rows('SELECT COUNT(*) listings,COUNT(DISTINCT vehicle_id) vehicles,MAX(last_seen) updated FROM listings WHERE active=1 AND demo=?',[demo?1:0])[0],sources:this.sources().filter(s=>!s.demo).map(s=>({id:s.id,name:s.name,enabled:s.enabled,lastSync:s.lastSync,error:s.error})),aiConfigured:!!this.setting('apiKey'),model:'openrouter/free'};}
-  watches(demo=false) {return this.rows('SELECT * FROM watches WHERE demo=? ORDER BY created DESC',[demo?1:0]).map(w=>{const filters=JSON.parse(w.filters);const current=this.rows('SELECT vehicle_ids FROM watch_results WHERE watch_id=?',[w.id])[0];const result=this.search(filters,demo,0,false,current?JSON.parse(current.vehicle_ids):null,true);const seen=new Set(JSON.parse(w.seen));const checked=this.rows('SELECT checked_at,error FROM watch_checks WHERE watch_id=?',[w.id])[0];return {id:w.id,name:w.name,filters,total:result.total,newCount:result.ids.filter(id=>!seen.has(id)).length,checkedAt:checked?.checked_at||null,error:checked?.error||null};});}
+  watches(demo=false) {return this.rows('SELECT * FROM watches WHERE demo=? ORDER BY created DESC',[demo?1:0]).map(w=>{const filters=JSON.parse(w.filters);const current=this.rows('SELECT vehicle_ids FROM watch_results WHERE watch_id=?',[w.id])[0];const result=this.search(filters,demo,0,false,current?JSON.parse(current.vehicle_ids):null,true);const seen=new Set(JSON.parse(w.seen));const checked=this.rows('SELECT checked_at,error FROM watch_checks WHERE watch_id=?',[w.id])[0];const picks=this.rows('SELECT data FROM watch_recommendations WHERE watch_id=?',[w.id])[0];const ranking=picks?JSON.parse(picks.data):[];const valid=new Map(this.search(filters,demo,0,false,ranking.map(c=>c.id)).items.map(c=>[c.id,c]));const items=ranking.flatMap(c=>valid.has(c.id)?[{...valid.get(c.id),recommendation:c.recommendation}]:[]);return {id:w.id,name:w.name,filters,items,total:result.total,newCount:result.ids.filter(id=>!seen.has(id)).length,checkedAt:checked?.checked_at||null,error:checked?.error||null};});}
   addWatch(name,filters,demo=false) {filters=validateFilters(filters);const seen=this.search(filters,demo,0,false,null,true).ids;this.db.run('INSERT INTO watches VALUES (?,?,?,?,?,?)',[crypto.randomUUID(),cleanString(name,100)||'Min sökning',JSON.stringify(filters),demo?1:0,new Date().toISOString(),JSON.stringify(seen)]);this.save();}
-  removeWatch(id) {this.db.run('DELETE FROM watches WHERE id=?',[id]);this.db.run('DELETE FROM watch_checks WHERE watch_id=?',[id]);this.db.run('DELETE FROM watch_results WHERE watch_id=?',[id]);this.save();}
+  removeWatch(id) {this.db.run('DELETE FROM watches WHERE id=?',[id]);this.db.run('DELETE FROM watch_checks WHERE watch_id=?',[id]);this.db.run('DELETE FROM watch_results WHERE watch_id=?',[id]);this.db.run('DELETE FROM watch_recommendations WHERE watch_id=?',[id]);this.save();}
   markWatch(id) {const w=this.rows('SELECT * FROM watches WHERE id=?',[id])[0];if(w){this.db.run('UPDATE watches SET seen=? WHERE id=?',[JSON.stringify(this.search(JSON.parse(w.filters),!!w.demo,0,false,null,true).ids),id]);this.save();}}
   purgeExpired() {
     this.purgeArchive();
