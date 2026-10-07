@@ -10,6 +10,8 @@ Kontrollerad 7 oktober 2026. Lokala rapporter finns i leveransens CarCrow-Testbe
 
 ## Praktiska gränser
 
+Mac-signering i 0.5.1 rättar det fel som 0.5:s gränssnittstester missade: den ursprungliga körbara filens signatur förseglade inte CarCrows resurser. Den färdiga zippen kontrolleras nu med strikt, rekursiv kodsignaturkontroll, karantänmarkering och en verklig ändring av en appresurs som måste underkännas. Ad-hoc-signeringen ersätter inte Apple-notarization; första öppningen kräver fortfarande användarens godkännande i macOS.
+
 Källors tillgänglighet och format kan ändras. Nekad åtkomst visas utan kringgående eller automatiska upprepade försök i samma sökning. Appen hämtar aktuella annonssidor vid sökning och bevakningskontroller; den hämtar inte hela Sveriges marknad i bakgrunden. En tom delmängd bevisar inte att gamla annonser tagits bort.
 
 Rekommendationer använder lokal EmbeddingGemma 2 med 256 dimensioner. Windows-exporten använder reducerat viktintervall för x64-inferens. Prisbilden kräver minst fem andra jämförbara annonser och bevisar inte bilens skick.

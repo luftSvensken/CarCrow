@@ -20,6 +20,7 @@ const {_electron:electron}=require('playwright'),fs=require('node:fs'),path=requ
   },{installer,version,publicRelease}).catch(e=>{if(!/closed|destroyed|Target/.test(e.message))throw e;});
   app=null;const start=Date.now();while(!fs.existsSync(path.join(root,'result.json'))){if(Date.now()-start>180000)throw new Error('Update helper did not complete');await new Promise(r=>setTimeout(r,200));}
   const result=JSON.parse(fs.readFileSync(path.join(root,'result.json'),'utf8'));assert.equal(result.ok,true,result.error);
+  if(process.platform==='darwin'){require('node:child_process').execFileSync('/usr/bin/codesign',['--verify','--deep','--strict',path.resolve(exe,'../../..')]);report.checks.push('installed Mac app retains its complete valid code signature');}
   pid=JSON.parse(fs.readFileSync(path.join(root,'running.json'),'utf8')).pid;try{process.kill(pid);}catch{}pid=null;await new Promise(r=>setTimeout(r,1000));
   app=await launch();const updated=await app.firstWindow();await updated.getByRole('heading',{name:'Vilken bil spanar du efter?'}).waitFor();
   const state=await updated.evaluate(async()=>({boot:(await window.carcrow.call('bootstrap')).data,chats:(await window.carcrow.call('chats')).data,saved:(await window.carcrow.call('searchNext',{filters:{},saved:true})).data}));

@@ -12,7 +12,7 @@ AI använder **Nemotron 3 Super (free)** med **Nemotron 3 Ultra (free)** som res
 - Fortsätt i samma chatt. Välj bilar för jämförelse, spara favoriter eller bevaka sökningen. Öppna ett bilkort för originalannonser och verklig prishistorik.
 - Alla bilar har vanlig bilsökning med manuella filter. Varje ny sökning börjar hos källornas aktuella annonser. De första annonserna visas direkt och resterande källor fortsätter i bakgrunden. När du bläddrar vidare hämtas fler vanliga sidor hos anslutna källor. Endast synliga kort renderas. Sökningen delar upp orden och matchar över annonsens verkliga fält: ”V70 business” kräver inte att orden står bredvid varandra. Märkesalias, vanliga stavfel, utrustningsprefix och ”eller” stöds. Välj Relevans för bästa textmatchning.
 
-Appen är byggd utan utvecklarcertifikat och är inte notariserad. Mac kan kräva Högerklick → Öppna. Windows kan visa SmartScreen för en osignerad app.
+Mac-paketet har en ad-hoc-signatur som förseglar hela appens innehåll. Det är inte Apple-notariserat och saknar Developer ID-certifikat. Vid första öppningen kan macOS därför kräva Systeminställningar → Integritet och säkerhet → Öppna ändå. En varning om att utvecklaren inte kan verifieras är skild från en trasig kodsignatur. Windows kan visa SmartScreen för en osignerad app.
 
 ## Data och AI
 

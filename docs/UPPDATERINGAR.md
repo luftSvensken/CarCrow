@@ -9,11 +9,11 @@ En gräns på 18 anrop per IP och minut minskar missbruk; OpenRouters delade gra
 1. Ändra `version` i `package.json` och kör `npm install --package-lock-only`.
 2. Skicka ändringen till GitHub och låt kontrollflödena testa den.
 3. Kör flödet **Release CarCrow** i GitHub Actions för önskad version.
-4. Flödet bygger och testar Mac Apple Silicon och Windows innan samma version publiceras i GitHub Releases.
+4. Flödet bygger och testar Mac Apple Silicon och Windows innan samma version publiceras i GitHub Releases. Mac signeras uttryckligen, och den färdiga zippen packas upp igen för strikt signaturkontroll, karantänmarkering och ett prov som upptäcker ändrade appresurser. Felaktiga signaturer stoppar publiceringen.
 
 Appen kontrollerar den publika senaste stabila releasen. Vid start och var sjätte timme hämtas en ny verifierad version i bakgrunden. Den installeras när användaren avslutar CarCrow. Den nya appen kontrollerar att React-gränssnittet startar i ett dolt fönster och avslutas sedan; nästa vanliga start öppnar den nya versionen. Användaren kan även välja Installera nu i Inställningar → Uppdateringar. Avbrutna hämtningar installeras aldrig. Ett färdigt paket återanvänds efter omstart först sedan både aktuell GitHub-metadata och filens kontrollsumma verifierats igen. Hämtningen måste stämma med GitHubs SHA-256 och exakta filstorlek. Chattar, bevakningar och sparade bilar ligger i användarens separata datamapp. Mac installerar genom att byta appmapp och återställa den tidigare appen om den nya inte startar. Windows installerar med NSIS i samma installationsmapp.
 
-Projektet måste vara publikt för att appens uppdateringar ska fungera utan GitHub-inloggning. Installera 0.5 manuellt från 0.3. Från 0.4 kan du installera 0.5 med dess uppdateringsknapp; därefter sker framtida uppdateringar automatiskt. Osignerade första installationer kan kräva macOS Öppna eller Windows SmartScreen-bekräftelse.
+Projektet måste vara publikt för att appens uppdateringar ska fungera utan GitHub-inloggning. Installera 0.5.1 eller senare manuellt från 0.3. Från 0.4 kan du använda dess uppdateringsknapp; från 0.5 hämtas och installeras framtida uppdateringar automatiskt. Mac-versionen har en komplett ad-hoc-signatur men är inte Apple-notariserad; första installationen kan kräva Systeminställningar → Integritet och säkerhet → Öppna ändå. Windows kan kräva SmartScreen-bekräftelse. Se [Mac-installation och signering](MAC_INSTALLATION.md).
 
 ## Worker
 
