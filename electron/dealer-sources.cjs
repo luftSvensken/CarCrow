@@ -5,7 +5,7 @@ function riddermarkPage(html){
  const links=$('a[href]').toArray().map(e=>$(e).attr('href'));
  const listings=data.filter(car=>!car.isSold&&!car.isBeingPriced&&!car.isTransportVehicle).flatMap(car=>{
   const gear={Automatisk:'Automat',Automat:'Automat',Manuell:'Manuell'}[car.gearboxType];
-  const fuel=/laddhybrid/i.test(car.fuelType)?'Laddhybrid':/hybrid/i.test(car.fuelType)?'Hybrid':({Bensin:'Bensin',Diesel:'Diesel',El:'El',Etanol:'Etanol',Gas:'Gas'})[car.fuelType];
+  const fuel=require('./fuel.cjs').isPlugInHybrid(car.fuelType,car.title,car.modelDescription)?'Laddhybrid':/hybrid/i.test(car.fuelType)?'Hybrid':({Bensin:'Bensin',Diesel:'Diesel',El:'El',Etanol:'Etanol',Gas:'Gas'})[car.fuelType];
   const link=links.find(url=>new RegExp('/'+String(car.licenseplate).toLowerCase()+'/?$','i').test(url));
   if(!gear||!fuel||!link||!Number.isInteger(car.price)||car.price<=0||!Number.isInteger(car.mileage))return [];
   return [{id:String(car.id),title:car.title,make:car.make,model:car.series||car.model,variant:car.modelDescription||'',comparisonVariant:car.model,bodyType:car.carType||'',year:car.modelYear,mileage:car.mileage,price:car.price,fuel,gearbox:gear,url:new URL(link,'https://www.riddermarkbil.se').href,images:[...new Set([car.coverImage,...(car.images||[]).filter(x=>x.type===1).sort((a,b)=>a.position-b.position).map(x=>x.url)].filter(Boolean))].slice(0,40),city:car.physicalLocation?.name||car.location?.name||'',sellerType:'dealer',seller:'Riddermark Bil',registration:car.licenseplate,vin:car.vinNumber,description:'',publishedAt:car.publishedAt}];
