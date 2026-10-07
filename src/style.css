@@ -18,6 +18,10 @@
 .crow-easter-egg{display:grid;place-items:center;width:76px;height:76px;margin:0 auto 18px;padding:12px;border-radius:50%;color:var(--text);cursor:pointer}.welcome h1{margin-bottom:32px}
 .crow-jumping{animation:crow-hop .85s cubic-bezier(.2,.7,.25,1) both}.crow-jumping .crow-wing{transform-box:fill-box;transform-origin:90% 40%;animation:wing-flap .28s ease-in-out 3}
 @keyframes crow-hop{0%,100%{transform:translateY(0) rotate(0)}20%{transform:translateY(3px) scaleY(.9)}48%{transform:translateY(-18px) rotate(-8deg)}70%{transform:translateY(-3px) rotate(3deg)}86%{transform:translateY(2px) scaleY(.96)}}
+.crow-angry,.crow-fleeing{color:#e34848}.crow-angry{animation:crow-angry .12s ease-in-out 3}.crow-fleeing{animation:crow-flee .85s cubic-bezier(.25,.15,.3,1) both}.crow-fleeing .crow-wing{transform-box:fill-box;transform-origin:90% 40%;animation:wing-flap .12s ease-in-out infinite}
+@keyframes crow-angry{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(6deg) translateY(-2px)}}
+@keyframes crow-flee{0%{transform:translate(0,0) rotate(0);opacity:1}20%{transform:translate(-7px,-12px) rotate(-10deg);opacity:1}100%{transform:translate(160px,-180px) rotate(16deg);opacity:0}}
+@media(prefers-reduced-motion:reduce){.crow-angry,.crow-fleeing,.crow-fleeing .crow-wing{animation:none}.crow-fleeing{opacity:0}}
 @media(prefers-reduced-motion:reduce){.crow-jumping,.crow-jumping .crow-wing{animation:none}}
 
 .watch-group{margin-bottom:24px}.watch-picks{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:14px}.watch-picks .car-card{min-width:0}.watch-group .watch-card{margin-bottom:0}

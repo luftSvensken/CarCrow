@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version in package.json, for example 0.4.0'
+        description: 'Version in package.json, for example 0.5.0'
         required: true
         type: string
 
@@ -83,6 +83,7 @@ jobs:
           /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP" "release/$ASSET"
       - name: Verify actual Mac update and preserved user data
         env:
+          CARCROW_AUTOMATIC_UPDATE: '1'
           TARGET_ARCH: ${{ matrix.arch }}
           ASSET: ${{ matrix.asset }}
         run: |

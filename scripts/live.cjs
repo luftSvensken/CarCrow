@@ -1,8 +1,8 @@
 // Authorized live acceptance with an isolated profile, actual sources and the key-free Worker.
 const {_electron:electron}=require('playwright'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 (async()=>{
- const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'carcrow-live-')),output=path.resolve('test-results/live-0.4');fs.mkdirSync(output,{recursive:true});let app,page;
- const report={version:'0.4.0',startedAt:new Date().toISOString(),checks:[],status:'running'};
+ const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'carcrow-live-')),output=path.resolve('test-results/live-0.5');fs.mkdirSync(output,{recursive:true});let app,page;
+ const report={version:require('../package.json').version,startedAt:new Date().toISOString(),checks:[],status:'running'};
  const shot=async name=>{await page.waitForTimeout(400);await page.screenshot({path:path.join(output,name)});};
  try{
   app=await electron.launch({...process.env.CARCROW_EXECUTABLE?{executablePath:process.env.CARCROW_EXECUTABLE,args:[]}:{args:['.']},cwd:process.cwd(),env:{...process.env,CARCROW_DATA_DIR:dataDir,CARCROW_TEST_DEMO:''},timeout:90000});page=await app.firstWindow();const errors=[];page.on('pageerror',e=>errors.push(e.message));

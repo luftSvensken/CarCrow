@@ -1,22 +1,17 @@
-# Verifiering av CarCrow 0.4
+# Verifiering av CarCrow 0.5
 
-Kontrollerad 7 oktober 2026. Slutliga rapporter och bilder finns i leveransens `CarCrow-Testbevis`.
+Kontrollerad 7 oktober 2026. Lokala rapporter finns i leveransens CarCrow-Testbevis. Releaseflödet testar de faktiska paketen på varje plattform och publicerar först när alla kontroller passerar.
 
-- 67 data- och agenttester passerar, inklusive personliga urval, strikta bevakningsfilter, progressiva resultat, webbkällor, kodpåståenden och återställning efter misslyckat appbyte.
-- Sex Worker-tester passerar. De verifierar gratisroutern, begränsade verktyg, strömning, kvoter och att hemligheter inte läcker i svar.
-- Mac Apple Silicon- och Intel-paketen passerar 15 gränssnittskontroller med den verkliga lokala modellen. Fokusram, kråkhopp, bevakningarnas annonser, rekommendationer, teman och uppdateringsknappar ingår.
-- Faktiska Mac-appbyten på Apple Silicon och Intel via Rosetta i isolerade installationer passerar. Den ersättande appens React-gränssnitt startar och sparad bil, chatt, bevakning och tema bevaras.
-- Blocket/Bilweb i ett verkligt test gav första kortet efter cirka 0,5 sekunder och båda källorna efter cirka 1,4 sekunder. Mättiden beror på nätverk och källor.
-- Det kompletta livetestet i det paketerade Mac-gränssnittet passerar: Blocket, Bytbil, Wayke, Bilweb, Kvdbil och Riddermark svarar utan fel. OpenRouter Free strömmar 369 innehållsdelar och ger ett kort svar från det verkliga, strikt filtrerade bilurvalet.
-- Verklig strömning från Cloudflare/OpenRouter Free har verifierats. Tavily-sökningen läser faktiska rapporter och ger ursprungliga länkar. Appen returnerar osäkerhet när underlaget inte styrker den exakta varianten.
-- Produktionsberoenden har inga kända sårbarheter enligt npm audit vid kontrollen.
-
-Windows x64 passerar 68 tester (67 data- och agenttester samt PowerShell-parsern), sex Worker-tester och 15 UI-kontroller vardera för portabel och faktiskt installerad app. NSIS-installation, verklig uppdatering, omstart och bevarad bil, chatt, bevakning och tema passerar i [körning 37596183750](https://github.com/luftSvensken/CarCrow/actions/runs/37596183750). Den slutliga publiceringen testar samtliga paket igen innan de blir tillgängliga.
+- 87 data- och agenttester passerar lokalt på Mac. Windows PowerShell-parsern körs separat på Windows. Textmatchning över fält, alias, BMW-modellfamiljer, alternativa sökningar, hårda budgetkrav, sena källsvar, symboliska priser, bevakningarnas källmatchningar och automatisk installation ingår.
+- Åtta Worker-tester passerar. De verifierar fasta gratisreserver, prisgräns noll, begränsade verktyg, strömning, kvoter och skydd av hemligheter. Worker-typer och torr publicering passerar.
+- Verklig sökning på Blocket, Bytbil, Wayke, Bilweb, Kvdbil och Riddermark ger resultat för V70 business, BMW 3-serie under 200 000, Honda Jazz under 60 000 och VW Golf under 100 000. Första korten visas efter ungefär 0,4–0,8 sekunder i dessa körningar; full källomgång tar ungefär 3–6 sekunder. Tider varierar med nätverk och källor.
+- Den fasta Nemotron 3 Super-modellen testas med riktiga annonser genom den delade Workern. Första bil under 60 000 får ett brett urval med 96 bilkort utan påhittade märken eller årsmodellsgränser. Fortsättningen V70 business behåller budgeten och visar 48 bilkort. Ultra gav blandade resultat och är reserv. Gemma 4 31B svarade HTTP 429; dess kvalitet kunde därför inte bedömas.
+- Mac- och Windows-paketen testas med den riktiga lokala EmbeddingGemma 2-modellen, kråkan, fokusramen, sparningar, bevakningar, teman och begränsad AI-konfiguration. Faktiska automatiska appbyten kontrollerar dold uppstart och bevarad chatt, sparad bil, bevakning och tema.
 
 ## Praktiska gränser
 
-Källors tillgänglighet och format kan ändras. Nekad åtkomst visas utan kringgående. Appen hämtar aktuella annonssidor vid sökning och bevakningskontroller; den hämtar inte hela Sveriges marknad i bakgrunden. En tom delmängd bevisar inte att gamla annonser tagits bort.
+Källors tillgänglighet och format kan ändras. Nekad åtkomst visas utan kringgående eller automatiska upprepade försök i samma sökning. Appen hämtar aktuella annonssidor vid sökning och bevakningskontroller; den hämtar inte hela Sveriges marknad i bakgrunden. En tom delmängd bevisar inte att gamla annonser tagits bort.
 
-Rekommendationer använder en lokal 256-dimensionell int8-textencoder från Google EmbeddingGemma 2. Windows-exporten använder reducerat viktintervall för korrekt x64-inferens. Prisbilden kräver minst fem andra jämförbara annonser och är ingen garanti för bilens skick.
+Rekommendationer använder lokal EmbeddingGemma 2 med 256 dimensioner. Windows-exporten använder reducerat viktintervall för x64-inferens. Prisbilden kräver minst fem andra jämförbara annonser och bevisar inte bilens skick.
 
-Cloudflare, Tavily och OpenRouter används inom sina gratisnivåer. Kvoter kan begränsa tillgängligheten. AI-svar måste kunna kontrolleras mot de lästa källorna och originalannonsen. Första installationen är osignerad och kan kräva OS-bekräftelse.
+Cloudflare, Tavily och OpenRouter används inom gratisnivåerna. Kvoter kan begränsa tillgängligheten. AI-svar behöver kontrolleras mot lästa källor och originalannonsen. Första installationen är osignerad och kan kräva OS-bekräftelse.

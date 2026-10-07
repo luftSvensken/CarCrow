@@ -1,6 +1,6 @@
 # Windows-test
 
-CarCrow 0.4 byggs och provas på Windows x64 via projektets GitHub Actions. Se [verifieringsrapporten](VERIFIERING.md) för det aktuella slutresultatet. Kontrollerna använder isolerade exempelbilar med AI-anslutningen avstängd och den verkliga lokala rekommendationsmodellen. Användarens annonser, databas och OpenRouter-konto används inte.
+CarCrow 0.5 byggs och provas på Windows x64 via projektets GitHub Actions. Se [verifieringsrapporten](VERIFIERING.md) för det aktuella slutresultatet. Kontrollerna använder isolerade exempelbilar med AI-anslutningen avstängd och den verkliga lokala rekommendationsmodellen. Användarens annonser, databas och OpenRouter-konto används inte.
 
 ## På en Windows-dator
 

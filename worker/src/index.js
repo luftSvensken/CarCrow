@@ -1,4 +1,12 @@
 const names=new Set(['search_market','search_database','inspect_car','compare_cars','search_web']);
+const freeModels=new Set(['nvidia/nemotron-3-ultra-550b-a55b:free','nvidia/nemotron-3-super-120b-a12b:free','google/gemma-4-31b-it:free']);
+function modelOrder(env,requested='openrouter/free'){
+ const primary=freeModels.has(env.MODEL)?env.MODEL:'nvidia/nemotron-3-super-120b-a12b:free';
+ const fallback=freeModels.has(env.FALLBACK_MODEL)?env.FALLBACK_MODEL:'nvidia/nemotron-3-ultra-550b-a55b:free';
+ // Legacy clients use the alias. A candidate other than the primary can be
+ // evaluated on its own, without silently attributing a fallback's answer to it.
+ return requested==='openrouter/free'||requested===primary?[...new Set([primary,fallback])]:[requested];
+}
 const error=(message,status)=>Response.json({error:{message}},{status,headers:{'Cache-Control':'no-store'}});
 /** @param {Request | Response} request @param {number} maxBytes */
 async function boundedJSON(request,maxBytes=512*1024){
@@ -10,7 +18,7 @@ export default {
  /** @param {Request} request @param {Env & {OPENROUTER_API_KEY?:string,TAVILY_API_KEY?:string}} env @param {ExecutionContext} ctx */
  async fetch(request,env,ctx){
   const url=new URL(request.url);
-  if(url.pathname==='/health'&&request.method==='GET')return Response.json({ok:true,model:'openrouter/free',version:'0.4.0'});
+  if(url.pathname==='/health'&&request.method==='GET')return Response.json({ok:true,models:modelOrder(env),version:'0.5.0'});
   if(url.pathname==='/v1/search'&&request.method==='POST')return search(request,env,ctx);
   if(url.pathname!=='/v1/chat/completions'||request.method!=='POST')return error('Okänd funktion.',404);
   if(!env.OPENROUTER_API_KEY)return error('AI-anslutningen är inte färdigkonfigurerad.',503);
@@ -18,12 +26,12 @@ export default {
   const limit=await env.AI_LIMITER.limit({key:ip});if(!limit.success)return error('Många AI-anrop just nu. Försök igen om en minut.',429);
   try{
    const data=await boundedJSON(request);
-   if(data.model!=='openrouter/free'||data.stream!==true||!Array.isArray(data.messages)||data.messages.length<1||data.messages.length>48)return error('Ogiltigt AI-anrop.',400);
+   if(data.model!=='openrouter/free'&&!freeModels.has(data.model)||data.stream!==true||!Array.isArray(data.messages)||data.messages.length<1||data.messages.length>48)return error('Ogiltigt AI-anrop.',400);
    if(data.messages.some(m=>!['system','user','assistant','tool'].includes(m.role)||(m.content!=null&&typeof m.content!=='string')))return error('Ogiltiga meddelanden.',400);
    if(!Array.isArray(data.tools)||data.tools.length>5||data.tools.some(t=>t.type!=='function'||!names.has(t.function?.name)))return error('Okänt verktyg.',400);
-   const payload={model:'openrouter/free',stream:true,messages:data.messages,tools:data.tools,tool_choice:data.tool_choice==='none'?'none':'auto',temperature:0.2,max_tokens:2048};
+   const payload={models:modelOrder(env,data.model),route:'fallback',provider:{max_price:{prompt:0,completion:0,request:0}},stream:true,messages:data.messages,tools:data.tools,tool_choice:data.tool_choice==='none'?'none':'auto',temperature:0.2,max_tokens:8192,reasoning:{effort:'low',exclude:true}};
    const upstream=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+env.OPENROUTER_API_KEY,'Content-Type':'application/json',Accept:'text/event-stream','X-Title':'CarCrow'},body:JSON.stringify(payload),signal:AbortSignal.any([request.signal,AbortSignal.timeout(110000)])});
-   if(!upstream.ok){await upstream.body?.cancel();return error(upstream.status===429?'OpenRouter Free är tillfälligt begränsat. Försök senare.':'AI-tjänsten kunde inte slutföra anropet.',upstream.status===429?429:502);}
+   if(!upstream.ok){const failed=await boundedJSON(upstream,32768).catch(()=>null),daily=/per.day|daily|daglig/i.test(failed?.error?.message||'');return error(upstream.status===429?(daily?'OpenRouters dagliga gratiskvot är nådd. Försök igen efter återställningen.':'Gratisservern är tillfälligt begränsad. Försök senare.'):'AI-tjänsten kunde inte slutföra anropet.',upstream.status===429?429:502);}
    if(!upstream.headers.get('Content-Type')?.includes('text/event-stream')){await upstream.body?.cancel();return error('AI-tjänsten returnerade ingen ström.',502);}
    return new Response(upstream.body,{headers:{'Content-Type':'text/event-stream','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
   }catch(e){return error(e instanceof Error&&e.message==='Begäran är för stor.'?e.message:'AI-anropet kunde inte slutföras.',e instanceof Error&&e.message==='Begäran är för stor.'?413:400);}

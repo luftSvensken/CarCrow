@@ -28,8 +28,8 @@ async function dispatch(action,p={}){
   if(!p||typeof p!=='object'||Array.isArray(p))throw new Error('Ogiltig begäran.');
   const demo=demoMode();
   switch(action){
-    case 'bootstrap':return {stats:{...store.stats(demo),aiConfigured:!demoMode()&&!!require('./ai-config.json').endpoint,model:'openrouter/free'},facets:store.facets(demo),theme:store.setting('theme')||'system',dark:nativeTheme.shouldUseDarkColors,demo,sources:store.sources().filter(s=>!s.demo).map(sourcePublic),watches:store.watches(demo),checkingWatches:!!watchChecker.running,platform:process.platform,updates:updater.public(),version:app.getVersion()};
-    case 'uiReady':updater.acknowledge();return true;
+    case 'bootstrap':return {stats:{...store.stats(demo),aiConfigured:!demoMode()&&!!require('./ai-config.json').endpoint,model:require('./ai-config.json').model},facets:store.facets(demo),theme:store.setting('theme')||'system',dark:nativeTheme.shouldUseDarkColors,demo,sources:store.sources().filter(s=>!s.demo).map(sourcePublic),watches:store.watches(demo),checkingWatches:!!watchChecker.running,platform:process.platform,updates:updater.public(),version:app.getVersion()};
+    case 'uiReady':updater.acknowledge();if(process.argv.includes('--carcrow-update-hidden'))setTimeout(()=>app.quit(),500);return true;
     case 'chats':return agent.list();
     case 'chat':return agent.get(p.id);
     case 'chatDelete':agent.remove(p.id);changed();return true;
@@ -59,7 +59,7 @@ async function dispatch(action,p={}){
     case 'archive':return store.archived(demo);
     case 'restoreBookmark':store.restoreBookmark(p.id);changed();return true;
     case 'recommendations':return await recommendations.get({onResults:result=>sendMarket({type:'results',requestId:p.requestId,result})});
-    case 'updateCheck':return await updater.check();
+    case 'updateCheck':return await updater.automatic();
     case 'updateInstall':return await updater.install();
     case 'updateCancel':updater.cancel();return true;
     case 'settings':{
@@ -94,7 +94,7 @@ async function dispatch(action,p={}){
   }
 }
 function createWindow(){
-  win=new BrowserWindow({width:1320,height:900,minWidth:720,minHeight:620,title:'CarCrow',backgroundColor:nativeTheme.shouldUseDarkColors?'#17181c':'#ffffff',titleBarStyle:process.platform==='darwin'?'hiddenInset':'default',trafficLightPosition:{x:22,y:22},webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
+  win=new BrowserWindow({show:!process.argv.includes('--carcrow-update-hidden'),width:1320,height:900,minWidth:720,minHeight:620,title:'CarCrow',backgroundColor:nativeTheme.shouldUseDarkColors?'#17181c':'#ffffff',titleBarStyle:process.platform==='darwin'?'hiddenInset':'default',trafficLightPosition:{x:22,y:22},webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));win.webContents.on('will-navigate',e=>e.preventDefault());
   win.webContents.session.setPermissionRequestHandler((_wc,_permission,cb)=>cb(false));
   win.webContents.session.webRequest.onBeforeSendHeaders((details,cb)=>{if(details.resourceType==='image')delete details.requestHeaders.Referer;cb({requestHeaders:details.requestHeaders});});
@@ -110,7 +110,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     if(!process.env.CARCROW_DATA_DIR&&!fs.existsSync(dataFile))for(const name of ['Bilspan','bilspan']){const previous=path.join(app.getPath('appData'),name,'bilspan.sqlite');if(fs.existsSync(previous)){fs.mkdirSync(path.dirname(dataFile),{recursive:true});fs.copyFileSync(previous,dataFile);break;}}
     store=await Store.create(dataFile);
     store.setSetting('apiKey',null);store.setSetting('apiKeyVerified',null);
-    store.setSetting('model','openrouter/free');
+    store.setSetting('model',require('./ai-config.json').model);
     store.setSetting('background',false);store.setSetting('demo',demoMode());nativeTheme.themeSource=store.setting('theme')||'system';
     if(!demoMode()){store.db.run('DELETE FROM listings WHERE demo=1');store.db.run('DELETE FROM sources WHERE id IN (SELECT id FROM sources WHERE json_extract(config,\'$.demo\')=1)');}
 
@@ -128,9 +128,19 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'CarCrow',submenu:[{role:'about'},{type:'separator'},{label:'Visa CarCrow',click:()=>win.show()},{role:'quit'}]},{label:'Redigera',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},{label:'Fönster',submenu:[{role:'minimize'},{role:'zoom'},{role:'close'}]}]));
     updater=new Updater({app,changed});
     createWindow();
-    if(app.isPackaged&&!demoMode())updater.check().catch(()=>{});
-    if(!demoMode())watchChecker.check().catch(()=>{});
+    if(app.isPackaged&&!demoMode()&&!process.argv.includes('--carcrow-update-hidden')){
+      updater.automatic().catch(()=>{});
+      const updateTimer=setInterval(()=>updater.automatic().catch(()=>{}),6*3600000);updateTimer.unref();app.once('before-quit',()=>clearInterval(updateTimer));
+    }
+    if(!demoMode()&&!process.argv.includes('--carcrow-update-hidden'))watchChecker.check().catch(()=>{});
     app.on('activate',()=>{if(win&&!win.isDestroyed())win.show();else createWindow();if(!demoMode())watchChecker.check().catch(()=>{});});
   }).catch(e=>{dialog.showErrorBox('CarCrow kunde inte starta',e.message);app.quit();});
-  app.on('before-quit',()=>{quitting=true;agent?.active?.controller.abort();embedding?.close();for(const request of marketRequests.values())request.abort();store?.db.close();});app.on('window-all-closed',()=>app.quit());
+  app.on('before-quit',e=>{
+    if(e.defaultPrevented)return;
+    if(!quitting&&updater?.ready()){
+      e.preventDefault();quitting=true;
+      updater.install({quitAfter:true}).catch(()=>app.quit());return;
+    }
+    quitting=true;updater?.cancel();agent?.active?.controller.abort();embedding?.close();for(const request of marketRequests.values())request.abort();store?.db.close();
+  });app.on('window-all-closed',()=>app.quit());
 }

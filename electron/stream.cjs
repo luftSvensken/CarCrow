@@ -11,7 +11,7 @@ class SSEDecoder {
   lines(){let at;while((at=this.buffer.indexOf('\n'))!==-1){const line=this.buffer.slice(0,at).replace(/\r$/,'');this.buffer=this.buffer.slice(at+1);if(!line){if(this.data.length){this.emit(this.data.join('\n'));this.data=[];}}else if(line.startsWith('data:'))this.data.push(line.slice(5).replace(/^ /,''));}}
   end(){this.buffer+=this.decoder.end();this.buffer+='\n\n';this.lines();}
 }
-async function streamCompletion({key,messages,tools,signal,onDelta,model='openrouter/free',toolChoice='auto',endpoint=process.env.CARCROW_TEST_DEMO==='1'?null:ai.endpoint}){
+async function streamCompletion({key,messages,tools,signal,onDelta,model=ai.model,toolChoice='auto',endpoint=process.env.CARCROW_TEST_DEMO==='1'?null:ai.endpoint}){
   if(!key&&!endpoint)throw new Error('OpenRouter är inte konfigurerat.');
   if(signal?.aborted)throw cancelled();
   const url=new URL(endpoint||'https://openrouter.ai/api/v1/chat/completions');if(url.protocol!=='https:'||url.port&&url.port!=='443')throw new Error('Ogiltig AI-anslutning.');const addresses=await dns.lookup(url.hostname,{all:true});
@@ -20,7 +20,7 @@ async function streamCompletion({key,messages,tools,signal,onDelta,model='openro
   if(signal?.aborted)throw cancelled();
   return new Promise((resolve,reject)=>{
     let content='',finish=null,usedModel=model,bytes=0;const calls=new Map();
-    const req=https.request(url,{method:'POST',headers:{...(key&&!endpoint?{Authorization:'Bearer '+key}:{}),'Content-Type':'application/json',Accept:'text/event-stream','X-Title':'CarCrow','User-Agent':'CarCrow/0.4 desktop'},lookup:(_h,opts,cb)=>opts?.all?cb(null,[chosen]):cb(null,chosen.address,chosen.family)},res=>{
+    const req=https.request(url,{method:'POST',headers:{...(key&&!endpoint?{Authorization:'Bearer '+key}:{}),'Content-Type':'application/json',Accept:'text/event-stream','X-Title':'CarCrow','User-Agent':'CarCrow/0.5 desktop'},lookup:(_h,opts,cb)=>opts?.all?cb(null,[chosen]):cb(null,chosen.address,chosen.family)},res=>{
       if(res.statusCode<200||res.statusCode>=300){res.resume();const e=new Error(res.statusCode===401?'OpenRouter godkände inte appens anslutning.':res.statusCode===429?'OpenRouter Free är tillfälligt begränsat. Försök igen om en stund.':'OpenRouter svarade med HTTP '+res.statusCode+'.');e.status=res.statusCode;reject(e);return;}
       if(!String(res.headers['content-type']).includes('text/event-stream')){res.resume();reject(new Error('OpenRouter returnerade ingen ström.'));return;}
       const parser=new SSEDecoder(data=>{
@@ -38,7 +38,7 @@ async function streamCompletion({key,messages,tools,signal,onDelta,model='openro
     });
     const abort=()=>req.destroy(cancelled());signal?.addEventListener('abort',abort,{once:true});
     const deadline=setTimeout(()=>req.destroy(new Error('OpenRouter Free kunde inte slutföra svaret inom två minuter. Försök igen.')),120000);deadline.unref();req.once('close',()=>{clearTimeout(deadline);signal?.removeEventListener('abort',abort);});req.on('error',reject);req.setTimeout(75000,()=>req.destroy(new Error('OpenRouter Free svarar långsamt. Försök igen.')));
-    req.end(JSON.stringify({model,messages,tools,tool_choice:toolChoice,stream:true,temperature:0.2,max_tokens:2048}));
+    req.end(JSON.stringify({model,messages,tools,tool_choice:toolChoice,stream:true,temperature:0.2,max_tokens:8192,provider:{max_price:{prompt:0,completion:0,request:0}}}));
   });
 }
 module.exports={SSEDecoder,streamCompletion,cancelled};

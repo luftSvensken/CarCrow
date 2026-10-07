@@ -2,6 +2,7 @@ const crypto=require('node:crypto');
 const {requestJSON}=require('./services.cjs');
 const {validateFilters,normalizeListing}=require('./core.cjs');
 const brands=require('./blocket-brands.json');
+const {sourceQuery,normalize}=require('./search-query.cjs');
 function modelName(d){
   if(d.make==='BMW'&&/^\d+-Serie$/i.test(d.series||''))return d.series.toLowerCase();
   return (d.series||d.model||'Ej angiven').replace(/-Serie$/i,'');
@@ -9,7 +10,7 @@ function modelName(d){
 function parseCar(d){
   if(!d||!d.id||!d.heading||!d.make||!d.canonical_url)return null;
   if(d.sales_form!=null&&d.sales_form!==1)return null;
-  if(d.price?.currency_code!=='SEK'||!Number.isInteger(d.price.amount)||d.price.amount<=0)return null;
+  if(d.price?.currency_code!=='SEK'||!Number.isInteger(d.price.amount)||d.price.amount<=100)return null;
   if(/(?:vi köper|köpes|köper din|bilar sökes)/i.test(d.heading+' '+(d.model_specification||'')))return null;
   if(/privatleasing|(?:\d|kr|:-)\s*\/\s*mån|leasing\s+\d/i.test(d.heading+' '+(d.model_specification||'')))return null;
   if(!Number.isInteger(d.year)||!Number.isInteger(d.mileage))return null;
@@ -24,12 +25,12 @@ function parseCar(d){
   return {id:String(d.id),title:d.heading,make:d.make,model:modelName(d),variant:d.model_specification||d.model||'',comparisonVariant:d.model||'',bodyType:d.body_type||'',year:d.year,mileage,price:d.price.amount,fuel,gearbox,registration:reg,vin,url:d.canonical_url,city:typeof d.location==='string'?d.location:d.location?.name||'',seller:d.organisation_name||({'Privat':'Privat säljare','Företag':'Bilhandlare'})[d.dealer_segment]||'',images,publishedAt:d.timestamp?new Date(d.timestamp).toISOString():undefined,description:''};
 }
 function buildURL(filters,page=1){
-  const f=validateFilters(filters);const u=new URL('https://blocket-api.se/v1/search/car');u.searchParams.set('page',String(page));u.searchParams.set('sort_order',f.sort==='priceAsc'?'PRICE_ASC':f.sort==='priceDesc'?'PRICE_DESC':'PUBLISHED_DESC');
+  const f=validateFilters(filters);const u=new URL('https://blocket-api.se/v1/search/car');u.searchParams.set('page',String(page));u.searchParams.set('sort_order',f.sort==='priceAsc'?'PRICE_ASC':f.sort==='priceDesc'?'PRICE_DESC':f.sort==='mileage'?'MILEAGE_ASC':f.sort==='relevance'||(!f.sort&&(f.query||f.models?.length))?'RELEVANCE':'PUBLISHED_DESC');
   const token=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,'_');
-  for(const make of f.makes||[]){const m=token(make);if(brands.includes(m))u.searchParams.append('models',m);}
+  for(const make of f.makes||[]){const m=token(normalize(make));if(brands.includes(m))u.searchParams.append('models',m);}
   for(const [k,param] of [['minPrice','price_from'],['maxPrice','price_to'],['minYear','year_from'],['maxYear','year_to'],['maxMileage','milage_to']])if(f[k]!=null)u.searchParams.set(param,String(f[k]));
   if(f.gearbox)u.searchParams.append('transmissions',f.gearbox==='Automat'?'AUTOMATIC':'MANUAL');
-  if(f.query)u.searchParams.set('query',f.query);
+  const query=sourceQuery(f);if(query)u.searchParams.set('query',query);
   return u.href;
 }
 async function fetchCars(store,source,filters={}, {request=requestJSON,pages=5,force=false}={}){
