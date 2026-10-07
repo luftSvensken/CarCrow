@@ -1,6 +1,6 @@
 # Uppdateringar och drift
 
-CarCrow 0.4 använder en Cloudflare Worker på gratisnivån. Den publicerade appen innehåller ingen OpenRouter-nyckel. `electron/ai-config.json` pekar på Workern, som endast accepterar `openrouter/free` och strömmande anrop. Nyckeln lagras som `OPENROUTER_API_KEY` i Cloudflare. Webbsökningen använder Tavilys officiella API via samma Worker. `TAVILY_API_KEY` är en separat Cloudflare-hemlighet. Gratisnivån ger 1 000 sökningar per månad, och Workern tvingar basic-sökning utan betalda extrafunktioner. Identiska frågor cachas i 15 minuter. En gräns på sex sökningar per IP och minut minskar missbruk.
+CarCrow 0.4 använder en Cloudflare Worker på gratisnivån. Den publicerade appen innehåller ingen OpenRouter-nyckel. `electron/ai-config.json` pekar på Workern, som endast accepterar `openrouter/free` och strömmande anrop. Nyckeln lagras som `OPENROUTER_API_KEY` i Cloudflare. Webbsökningen använder Tavilys officiella API via samma Worker. `TAVILY_API_KEY` är en separat Cloudflare-hemlighet. Gratisnivån ger 1 000 krediter per månad, och Workern tvingar basic-sökning utan betalda extrafunktioner. En sökning kostar en kredit och läsning av upp till tre relevanta källor högst en extra kredit. Identiska frågor cachas i 15 minuter. En gräns på sex sökningar per IP och minut minskar missbruk.
 
 En gräns på 18 anrop per IP och minut minskar missbruk; OpenRouters delade gratiskvot kan fortfarande ta slut.
 

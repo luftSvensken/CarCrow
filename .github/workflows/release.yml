@@ -81,6 +81,14 @@ jobs:
         run: |
           if [ "$TARGET_ARCH" = arm64 ]; then APP=release/mac-arm64/CarCrow.app; else APP=release/mac/CarCrow.app; fi
           /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP" "release/$ASSET"
+      - name: Verify actual Mac update and preserved user data
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+          ASSET: ${{ matrix.asset }}
+        run: |
+          if [ "$TARGET_ARCH" = arm64 ]; then export CARCROW_EXECUTABLE="$PWD/release/mac-arm64/CarCrow.app/Contents/MacOS/CarCrow"; else export CARCROW_EXECUTABLE="$PWD/release/mac/CarCrow.app/Contents/MacOS/CarCrow"; fi
+          export CARCROW_UPDATE_PACKAGE="$PWD/release/$ASSET"
+          node scripts/update-install.cjs
       - uses: actions/upload-artifact@v7
         with:
           name: carcrow-package-${{ matrix.arch }}

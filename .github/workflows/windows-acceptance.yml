@@ -44,13 +44,30 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
+      - uses: actions/cache@v5
+        id: model-cache
+        with:
+          path: models/embeddinggemma-2/
+          key: embeddinggemma2-windows-reduced-${{ hashFiles('scripts/export-embeddinggemma2.py', 'scripts/requirements-model.txt') }}
+      - uses: actions/cache@v5
+        with:
+          path: ~/AppData/Local/electron-builder/Cache
+          key: electron-builder-windows-${{ hashFiles('package-lock.json') }}
       - name: Prepare the real on-device recommendation model
+        if: steps.model-cache.outputs.cache-hit != 'true'
         run: |
           python -m pip install -r scripts/requirements-model.txt
           if ($LASTEXITCODE -ne 0) { throw 'Model build dependencies failed' }
           python scripts/export-embeddinggemma2.py
           if ($LASTEXITCODE -ne 0) { throw 'Model export failed' }
-          node scripts/check-embeddings.cjs
+      - name: Verify the on-device model
+        run: node scripts/check-embeddings.cjs
+      - name: Save the verified portable model
+        uses: actions/upload-artifact@v7
+        with:
+          name: embeddinggemma2-text-model
+          path: models/embeddinggemma-2/
+          retention-days: 7
       - name: Package Windows without publishing
         run: npx electron-builder --publish never --win zip nsis --x64 --config.nsis.artifactName=CarCrow-Windows-Setup.exe --config.win.artifactName=CarCrow-Windows.zip
       - name: Verify portable app and actual installation
@@ -66,13 +83,6 @@ jobs:
             release/CarCrow-Windows-Setup.exe
           compression-level: 0
           retention-days: 14
-      - name: Save the verified portable model
-        if: success()
-        uses: actions/upload-artifact@v7
-        with:
-          name: embeddinggemma2-text-model
-          path: models/embeddinggemma-2/
-          retention-days: 7
       - name: Save test evidence
         if: always()
         uses: actions/upload-artifact@v7

@@ -37,12 +37,26 @@ async function search(request,env,ctx){
  if(!(await env.SEARCH_LIMITER.limit({key:ip})).success)return error('Webbsökningens gräns är nådd. Försök senare.',429);
  try{
   const data=await boundedJSON(request,8192);if(typeof data.query!=='string'||data.query.trim().length<3||data.query.length>300)return error('Ogiltig sökfråga.',400);
-  const query=data.query.trim();const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(query.toLowerCase()));const key=new Request(new URL('/search-cache/'+Array.from(new Uint8Array(hash)).map(n=>n.toString(16).padStart(2,'0')).join(''),request.url));
+  const query=data.query.trim();const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(query.toLowerCase()));const key=new Request(new URL('/search-cache/v4/'+Array.from(new Uint8Array(hash)).map(n=>n.toString(16).padStart(2,'0')).join(''),request.url));
   const cached=await caches.default.match(key);if(cached)return cached;
-  const upstream=await fetch('https://api.tavily.com/search',{method:'POST',headers:{Authorization:'Bearer '+env.TAVILY_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({query,search_depth:'basic',max_results:6,topic:'general',include_answer:false,include_raw_content:'text',auto_parameters:false}),signal:AbortSignal.any([request.signal,AbortSignal.timeout(20000)])});
+  const upstream=await fetch('https://api.tavily.com/search',{method:'POST',headers:{Authorization:'Bearer '+env.TAVILY_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({query,search_depth:'basic',max_results:6,topic:'general',include_answer:false,include_raw_content:false,auto_parameters:false,include_domains:['adac.de','nhtsa.gov','haynes.com','honestjohn.co.uk','whatcar.com','carwow.co.uk','autocar.co.uk','volvocars.com','bmw.com','audi.com','toyota.com','mercedes-benz.com','vibilagare.se','teknikensvarld.se'],include_domains_mode:/reliability|common problems|pålitlig|vanliga fel|återkallel/i.test(query)?'restrict':'prefer',exclude_domains:['facebook.com','youtube.com','blocket.se','bytbil.com','bilweb.se','carchecker.pro']}),signal:AbortSignal.any([request.signal,AbortSignal.timeout(20000)])});
   if(!upstream.ok){await upstream.body?.cancel();return error('Webbsökningen är tillfälligt begränsad.',[402,429,432].includes(upstream.status)?429:502);}
   const result=await boundedJSON(upstream,512*1024);
-  const response=Response.json({results:(Array.isArray(result.results)?result.results:[]).slice(0,6).map(s=>({title:String(s.title||'').slice(0,300),url:String(s.url||'').slice(0,2000),content:String(s.content||'').slice(0,700),raw_content:s.raw_content?String(s.raw_content).slice(0,6500):null}))},{headers:{'Cache-Control':'public, max-age=900','X-Content-Type-Options':'nosniff'}});
+  const sources=(Array.isArray(result.results)?result.results:[]).slice(0,6).sort((a,b)=>relevance(b,query)-relevance(a,query));
+  const urls=sources.slice(0,3).map(s=>s.url).filter(u=>{try{const p=new URL(u);return p.protocol==='https:'&&/\.[a-z]{2,}$/i.test(p.hostname)&&!p.username&&!p.password;}catch{return false;}});
+  if(urls.length){
+   const extraction=await fetch('https://api.tavily.com/extract',{method:'POST',headers:{Authorization:'Bearer '+env.TAVILY_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({urls,query,chunks_per_source:5,extract_depth:'basic',format:'text',timeout:8}),signal:AbortSignal.any([request.signal,AbortSignal.timeout(10000)])});
+   if(extraction.ok){const extracted=await boundedJSON(extraction,512*1024);for(const source of sources){const page=extracted.results?.find(s=>s.url===source.url);source.raw_content=page?.raw_content||null;}}else {await extraction.body?.cancel();for(const source of sources)source.raw_content=null;}
+  }
+  const response=Response.json({results:sources.map(s=>({title:String(s.title||'').slice(0,300),url:String(s.url||'').slice(0,2000),content:String(s.content||'').slice(0,700),raw_content:s.raw_content?String(s.raw_content).slice(0,6500):null}))},{headers:{'Cache-Control':'public, max-age=900','X-Content-Type-Options':'nosniff'}});
   ctx.waitUntil(caches.default.put(key,response.clone()));return response;
  }catch(e){return error(e instanceof Error&&e.message==='Begäran är för stor.'?e.message:'Webbsökningen kunde inte slutföras.',e instanceof Error&&e.message==='Begäran är för stor.'?413:502);}
+}
+
+function relevance(source,query){
+ const title=String(source.title||'').toLowerCase().replace(/[^a-z0-9]+/g,' '),terms=query.toLowerCase().match(/[a-z0-9]{2,}/g)||[];
+ let score=terms.filter(t=>!['reliability','common','problems','used','report','car'].includes(t)).reduce((n,t)=>n+(title.includes(t)?2:0),0);
+ const family=query.match(/(\d)\s*series/i);if(family&&new RegExp('\\b'+family[1]+'\\s*series\\b').test(title))score+=8;
+ const year=Number(query.match(/\b(?:19|20)\d{2}\b/)?.[0]);const range=title.match(/((?:19|20)\d{2})\s+((?:19|20)\d{2})/);if(year&&range&&year>=Number(range[1])&&year<=Number(range[2]))score+=4;
+ return score;
 }
