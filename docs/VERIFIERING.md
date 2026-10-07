@@ -2,7 +2,7 @@
 
 Lokalt kontrollerad 7 oktober 2026. Releaseflödet publicerar endast efter godkända Windows- och Apple Silicon-kontroller av de faktiska paketen.
 
-- 112 data- och agenttester passerar på Mac. Ett plattformstest kör PowerShell-parsern på Windows. Nya tester omfattar egna märken, ort/radie, hårda intervall, lokal omsortering, SQL.js-reserv, chattsökning, verkligt ID-urval och Bilweb-migrering.
+- 117 data- och agenttester passerar på Mac. Ett plattformstest kör PowerShell-parsern på Windows. Nya tester omfattar egna märken, ort/radie, hårda intervall, lokal omsortering, SQL.js-reserv, chattsökning, verkligt ID-urval och Bilweb-migrering. Laddhybridfiltret känner igen uttryckliga PHEV-uppgifter även när källans bränslefält säger Hybrid; gamla cacheposter rättas med bibehållna sparningar.
 - Elva Worker-tester samt typkontroll och torr publicering passerar. Koordinater går inte till AI-modellen. Platsdelningen är avstängd från början och kräver uttryckligt samtycke.
 - 17 befintliga och åtta nya kontroller av Electron-gränssnittet passerar, inklusive sökbara filter, egen märkestext, ort utan positionsdelning, felaktiga intervall och sökning i chattmeddelanden. Den verkliga lokala EmbeddingGemma 2-modellen ingår i paketerade tester.
 - Verkliga V70 Business- och ortsökningar har gett 51 matchande annonser. BYD som tidigare saknades i märkeslistan fungerar. Första kort visas före full källomgång; lokal omsortering tog cirka 2–4 ms i dessa körningar. Tider varierar med dator, nätverk och källor.

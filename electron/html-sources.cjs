@@ -9,7 +9,7 @@ function structuredCar($){let car;$('script[type="application/ld+json"]').each((
 function inactive(d){return /^https:\/\/schema\.org\/(SoldOut|OutOfStock|Discontinued)$/.test(d?.offers?.availability||'');}
 function modelName(make,v){if(make==='BMW'&&/^[1-8]\d\d[deix]/i.test(v))return v[0]+'-serie';return make==='BMW'?v.replace(/-serien$/i,'-serie'):v;}
 function fuelName(v,title=''){
-  if(/plug.?in|laddhybrid|laddbar/i.test(v+' '+title))return 'Laddhybrid';
+  if(require('./fuel.cjs').isPlugInHybrid(v,title))return 'Laddhybrid';
   if(/hybrid/i.test(v))return 'Hybrid';
   return ({Bensin:'Bensin',Diesel:'Diesel',El:'El','El/Bensin':'Hybrid',Etanol:'Etanol',Gas:'Gas'})[v]||null;
 }
@@ -29,7 +29,8 @@ function parseBytbilDetail(html,url){
 function parseWaykeDetail(html,url){
   const $=require('cheerio').load(html),d=structuredCar($);if(!d)throw new Error('Waykes annonsformat har ändrats. Ingen data ändrades.');if(inactive(d))return {inactive:true};
   const fields={};$('dl dt').each((_i,e)=>{fields[text($(e))]=text($(e).next('dd'));});
-  const fuel=fuelName(fields.Motortyp||'',d.vehicleConfiguration)||fuelName(fields.Drivmedel||'');
+  const hint=[d.name,d.vehicleConfiguration].filter(Boolean).join(' ');
+  const fuel=fuelName(fields.Motortyp||'',hint)||fuelName(fields.Drivmedel||d.vehicleEngine?.fuelType||'',hint);
   const gearbox=({'Automat':'Automat','Automatisk':'Automat','Manuell':'Manuell'})[fields['Växellåda']||d.vehicleTransmission];
   const od=d.mileageFromOdometer;const mileage=od?.unitCode==='KMT'?Math.round(Number(od.value)/10):null;
   if(!fuel||!gearbox||mileage===null||d.offers?.priceCurrency!=='SEK')return null;
@@ -53,7 +54,11 @@ function listURL(id,f,make){if(id==='bilweb')throw new Error('Bilweb är borttag
     for(const [k,p] of [['minPrice','PriceRange.From'],['maxPrice','PriceRange.To'],['minYear','ModelYearRange.From'],['maxYear','ModelYearRange.To'],['maxMileage','MilageRange.To']])if(f[k]!=null)u.searchParams.set(p,String(f[k]));
     if(f.gearbox)u.searchParams.set('Gearboxes',f.gearbox==='Automat'?'Automatisk':'Manuell');
     for(const model of f.models||[])u.searchParams.append('Models',make==='BMW'?model.replace(/-serie$/i,'-serien'):model);
-    const fuels={Bensin:['Bensin'],Diesel:['Diesel'],El:['El'],Hybrid:['Elhybrid','Hybrid el/diesel','Hybrid el/bensin'],Laddhybrid:['Laddhybrid'],Etanol:['Bensin/etanol'],Gas:['Bensin/gas','Naturgas']};for(const fuel of f.fuelTypes||[])for(const value of fuels[fuel]||[])u.searchParams.append('Fuels',value);
+    // Bytbil also places explicitly titled PHEVs in its broad hybrid categories.
+    // Retrieve those categories and apply the strict normalized fuel filter locally.
+    const hybrids=['Elhybrid','Hybrid el/diesel','Hybrid el/bensin'];
+    const fuels={Bensin:['Bensin'],Diesel:['Diesel'],El:['El'],Hybrid:hybrids,Laddhybrid:['Laddhybrid',...hybrids],Etanol:['Bensin/etanol'],Gas:['Bensin/gas','Naturgas']};
+    for(const value of new Set((f.fuelTypes||[]).flatMap(fuel=>fuels[fuel]||[])))u.searchParams.append('Fuels',value);
     if(f.query)u.searchParams.set('FreeText',f.query);u.searchParams.set('SortParams.SortField',f.sort==='priceAsc'||f.sort==='priceDesc'?'price_value':f.sort==='mileage'?'milage':'publishedDate');u.searchParams.set('SortParams.IsAscending',f.sort==='priceAsc'||f.sort==='mileage'?'True':'False');
   }else{
     for(const [k,param] of [['minPrice','price.min'],['maxPrice','price.max'],['minYear','modelYear.min'],['maxYear','modelYear.max'],['maxMileage','odometer.max']])if(f[k]!=null)u.searchParams.set(param,String(f[k]));

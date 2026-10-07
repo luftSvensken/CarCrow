@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const initSqlJs = require('sql.js');
 const {normalize:searchNormalize,indexAd,querySQL,modelSQL}=require('./search-query.cjs');
 const {saleIssue}=require('./sale-quality.cjs');
+const {isPlugInHybrid}=require('./fuel.cjs');
 
 const {validateFilters,FUELS,GEARS,SORTS,normalizeBody}=require('./filters.cjs');
 const {listingPlace,distanceKm,normalizePlace}=require('./geography.cjs');
@@ -21,7 +22,7 @@ function normalizeListing(raw,source) {
     if(!Number.isInteger(raw[k])||raw[k]<lo||raw[k]>hi) throw new Error('Ogiltigt '+k); result[k]=raw[k];
   }
   if((!FUELS.includes(raw.fuel)&&!(partial&&raw.fuel==null))||(!GEARS.includes(raw.gearbox)&&!(partial&&raw.gearbox==null))) throw new Error('Okänt bränsle eller växellåda.');
-  result.fuel=raw.fuel??null; result.gearbox=raw.gearbox??null; result.url=httpsURL(raw.url);
+  result.fuel=isPlugInHybrid(raw.fuel,raw.title,raw.variant)?'Laddhybrid':raw.fuel??null; result.gearbox=raw.gearbox??null; result.url=httpsURL(raw.url);
   const host=new URL(result.url).hostname;
   if(source.hosts && !source.hosts.includes(host)) throw new Error('Annonsens domän ingår inte i avtalet: '+host);
   for(const k of ['city','seller','variant','comparisonVariant','bodyType','description']) result[k]=raw[k]?cleanString(raw[k],k==='description'?6000:150):'';
@@ -88,6 +89,16 @@ class Store {
     const missing=store.rows('SELECT id,data FROM listings WHERE id NOT IN (SELECT id FROM listing_search_text) OR id NOT IN (SELECT id FROM listing_facets)');
     if(missing.length){store.db.run('BEGIN');try{for(const row of missing)store.indexListing(row.id,JSON.parse(row.data));store.db.run('COMMIT');}catch(e){store.db.run('ROLLBACK');throw e;}}
     if(!store.setting('cashSaleCleanup06')){store.db.run('BEGIN');try{for(const row of store.rows('SELECT id,data FROM listings WHERE active=1'))if(saleIssue(JSON.parse(row.data)))store.db.run('UPDATE listings SET active=0 WHERE id=?',[row.id]);store.db.run('COMMIT');}catch(e){store.db.run('ROLLBACK');throw e;}store.setSetting('cashSaleCleanup06',true);}
+    if(!store.setting('plugInFuel06')){
+      store.db.run('BEGIN');try{
+        for(const row of store.rows("SELECT id,data FROM listings WHERE fuel='Hybrid'")){
+          const ad=JSON.parse(row.data);if(!isPlugInHybrid(ad.title,ad.variant))continue;
+          ad.fuel='Laddhybrid';const hash=crypto.createHash('sha256').update(JSON.stringify({...ad,publishedAt:undefined})).digest('hex');
+          store.db.run('UPDATE listings SET fuel=?,data=?,hash=? WHERE id=?',[ad.fuel,JSON.stringify(ad),hash,row.id]);
+        }
+        store.db.run('COMMIT');
+      }catch(e){store.db.run('ROLLBACK');throw e;}store.setSetting('plugInFuel06',true);
+    }
     store.salt=store.setting('identitySalt')||crypto.randomBytes(32).toString('hex');
     store.setSetting('identitySalt',store.salt); return store;
   }
