@@ -24,7 +24,7 @@ class SearchSessions {
     let result;
     // Finish every source response and fill a useful result page. A single early
     // match must not end retrieval. Source alternatives are visited round-robin.
-    const sources=this.store.sources().filter(s=>s.enabled&&s.adapter&&(!options.sources||options.sources.includes(s.id)));
+    const sources=this.store.sources().filter(s=>s.enabled&&s.adapter&&(!(options.sources||session.filters.sources)||(options.sources||session.filters.sources).includes(s.id)));
     const alternatives=Math.max(1,...sources.map(s=>sourceGroups(session.filters,s.adapter).length));
     const maxPages=Math.min(12,Math.max(4,alternatives));
     for(let page=0;page<maxPages;page++){
@@ -35,12 +35,19 @@ class SearchSessions {
     }
     return {...result,searchComplete:true,marketComplete:!result.hasMore&&!result.sourceWarning};
   }
+  refine(id,raw){
+    const session=this.sessions.get(id);if(!session)throw new Error('Sökningen behöver uppdateras.');
+    const filters=validateFilters(raw);session.viewFilters=filters;session.touched=Date.now();
+    const local=this.store.search(filters,false,0,false,[...session.ids],false,[],[...session.queryIds]);
+    return {...session.last,...local,filters,sessionId:id,remaining:Math.max(0,local.total-local.items.length)};
+  }
   async next(id,excludeIds=[],options={}){
     const session=this.sessions.get(id);if(!session)throw new Error('Sökningen behöver uppdateras. Gör en ny sökning.');session.touched=Date.now();
-    const local=this.store.search(session.filters,false,0,false,[...session.ids],false,excludeIds,[...session.queryIds]);
-    const hasMore=this.store.sources().some(s=>s.enabled&&s.adapter&&!session.state.sources[s.id]?.done&&!session.state.sources[s.id]?.error);
-    if(local.items.length>=48||!hasMore){const total=this.store.search(session.filters,false,0,false,[...session.ids],false,[],[...session.queryIds]).total;return {...session.last,...local,total,filters:session.filters,sessionId:id,hasMore,searchComplete:true,marketComplete:!hasMore&&!session.last?.sourceWarning,remaining:Math.max(0,local.total-local.items.length)};}
-    return this.fetchMatching(session,excludeIds,options);
+    const filters=session.viewFilters||session.filters;const local=this.store.search(filters,false,0,false,[...session.ids],false,excludeIds,[...session.queryIds]);
+    const hasMore=this.store.sources().some(s=>s.enabled&&s.adapter&&(!session.filters.sources||session.filters.sources.includes(s.id))&&!session.state.sources[s.id]?.done&&!session.state.sources[s.id]?.error);
+    if(local.items.length>=48||!hasMore){const total=this.store.search(filters,false,0,false,[...session.ids],false,[],[...session.queryIds]).total;return {...session.last,...local,total,filters,sessionId:id,hasMore,searchComplete:true,marketComplete:!hasMore&&!session.last?.sourceWarning,remaining:Math.max(0,local.total-local.items.length)};}
+    const next=await this.fetchMatching(session,excludeIds,options);
+    if(!session.viewFilters)return next;const refined=this.store.search(filters,false,0,false,[...session.ids],false,excludeIds,[...session.queryIds]);const total=this.store.search(filters,false,0,false,[...session.ids],false,[],[...session.queryIds]).total;return {...next,...refined,total,filters,remaining:Math.max(0,refined.total-refined.items.length)};
   }
 }
 module.exports={SearchSessions};

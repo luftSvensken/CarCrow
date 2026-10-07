@@ -1,7 +1,7 @@
 const fs=require('node:fs'),assert=require('node:assert/strict'),{Store}=require('../electron/core.cjs'),{Market}=require('../electron/market.cjs'),{SearchSessions}=require('../electron/search-sessions.cjs'),{CarAgent}=require('../electron/agent.cjs'),{requestJSON}=require('../electron/services.cjs'),{buildURL,parseCar}=require('../electron/blocket.cjs');
 (async()=>{
  const store=await Store.create(),source={id:'blocket',name:'Blocket',adapter:'blocket-public',enabled:true,mediaAllowed:true,hosts:['www.blocket.se','blocket.se']};store.setSource(source);
- if(process.argv.includes('--all'))for(const [id,name,adapter,hosts] of [['bytbil','Bytbil','public-html',['www.bytbil.com','bytbil.com']],['wayke','Wayke','public-html',['www.wayke.se','wayke.se']],['bilweb','Bilweb','public-html',['bilweb.se','www.bilweb.se']],['kvd','Kvdbil','kvd-public',['www.kvd.se','kvd.se']],['riddermark','Riddermark Bil','riddermark-public',['www.riddermarkbil.se']]])store.setSource({id,name,adapter,hosts,enabled:true,mediaAllowed:true});
+ if(process.argv.includes('--all'))for(const [id,name,adapter,hosts] of [['bytbil','Bytbil','public-html',['www.bytbil.com','bytbil.com']],['wayke','Wayke','public-html',['www.wayke.se','wayke.se']],['kvd','Kvdbil','kvd-public',['www.kvd.se','kvd.se']],['riddermark','Riddermark Bil','riddermark-public',['www.riddermarkbil.se']]])store.setSource({id,name,adapter,hosts,enabled:true,mediaAllowed:true});
  const report={startedAt:new Date().toISOString(),queries:[],ai:[],status:'running'};fs.mkdirSync('test-results',{recursive:true});
  try{
   const market=new Market(store),sessions=new SearchSessions(store,market);

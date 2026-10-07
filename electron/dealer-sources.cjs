@@ -8,7 +8,7 @@ function riddermarkPage(html){
   const fuel=/laddhybrid/i.test(car.fuelType)?'Laddhybrid':/hybrid/i.test(car.fuelType)?'Hybrid':({Bensin:'Bensin',Diesel:'Diesel',El:'El',Etanol:'Etanol',Gas:'Gas'})[car.fuelType];
   const link=links.find(url=>new RegExp('/'+String(car.licenseplate).toLowerCase()+'/?$','i').test(url));
   if(!gear||!fuel||!link||!Number.isInteger(car.price)||car.price<=0||!Number.isInteger(car.mileage))return [];
-  return [{id:String(car.id),title:car.title,make:car.make,model:car.series||car.model,variant:car.modelDescription||'',comparisonVariant:car.model,bodyType:car.carType||'',year:car.modelYear,mileage:car.mileage,price:car.price,fuel,gearbox:gear,url:new URL(link,'https://www.riddermarkbil.se').href,images:[...new Set([car.coverImage,...(car.images||[]).filter(x=>x.type===1).sort((a,b)=>a.position-b.position).map(x=>x.url)].filter(Boolean))].slice(0,40),city:car.physicalLocation?.name||car.location?.name||'',seller:'Riddermark Bil',registration:car.licenseplate,vin:car.vinNumber,description:'',publishedAt:car.publishedAt}];
+  return [{id:String(car.id),title:car.title,make:car.make,model:car.series||car.model,variant:car.modelDescription||'',comparisonVariant:car.model,bodyType:car.carType||'',year:car.modelYear,mileage:car.mileage,price:car.price,fuel,gearbox:gear,url:new URL(link,'https://www.riddermarkbil.se').href,images:[...new Set([car.coverImage,...(car.images||[]).filter(x=>x.type===1).sort((a,b)=>a.position-b.position).map(x=>x.url)].filter(Boolean))].slice(0,40),city:car.physicalLocation?.name||car.location?.name||'',sellerType:'dealer',seller:'Riddermark Bil',registration:car.licenseplate,vin:car.vinNumber,description:'',publishedAt:car.publishedAt}];
  });
  return {listings,count:data.length};
 }
@@ -33,7 +33,7 @@ function parseKvdDetail(html,url){
  const fuel=({Bensin:'Bensin',Diesel:'Diesel',El:'El',Laddhybrid:'Laddhybrid',Hybrid:'Hybrid',Etanol:'Etanol',Gas:'Gas'})[d.fuelType];const gearbox=({Automat:'Automat',Manuell:'Manuell'})[d.vehicleTransmission];
  if(!fuel||!gearbox||d.mileageFromOdometer?.unitCode!=='KMT')return null;
  const make=d.brand?.name,model=d.model;let plate='';$('li').each((_i,e)=>{if($(e).find('span').first().text().trim()==='Registreringsnummer')plate=$(e).find('span').last().text().trim();});
- return {id:url.match(/-(\d+)$/)?.[1],title:d.name,make,model:make==='BMW'?model.replace(/-serien/i,'-serie'):model,variant:d.description||'',comparisonVariant:d.description||'',bodyType:d.bodyType||'',year:Number(d.vehicleModelDate),mileage:Math.round(Number(d.mileageFromOdometer.value)/10),price:fixed,fuel,gearbox,url,images:(d.image||[]).slice(0,40),registration:plate||null,vin:d.vehicleIdentificationNumber,city:offer.seller?.address?.addressLocality||'',seller:'Kvdbil',description:(d.additionalProperty||[]).map(x=>x.name+': '+x.value).join('\n')};
+ return {id:url.match(/-(\d+)$/)?.[1],title:d.name,make,model:make==='BMW'?model.replace(/-serien/i,'-serie'):model,variant:d.description||'',comparisonVariant:d.description||'',bodyType:d.bodyType||'',year:Number(d.vehicleModelDate),mileage:Math.round(Number(d.mileageFromOdometer.value)/10),price:fixed,fuel,gearbox,url,images:(d.image||[]).slice(0,40),registration:plate||null,vin:d.vehicleIdentificationNumber,city:offer.seller?.address?.addressLocality||'',sellerType:'dealer',seller:'Kvdbil',description:(d.additionalProperty||[]).map(x=>x.name+': '+x.value).join('\n')};
 }
 function kvdURL(filters,page=1,make){
  const url=new URL('https://api.kvd.se/v1/auction/search');
@@ -53,7 +53,7 @@ function kvdPage(data){
   if(!fuel||!gearbox||!Number.isFinite(p.odometerReading)||!p.familyName)return [];
   const fee=Number(a.mediationFee),description=Number.isFinite(fee)&&fee>0?'Köparavgift tillkommer enligt Kvdbil: '+fee.toLocaleString('sv-SE')+' kr.':'';
   const base=a.processObject.baseObject;
-  return [{id:String(a.id),title:p.adHeader||p.title,make:p.brand,model:p.brand==='BMW'?p.familyName.replace(/-serien/i,'-serie'):p.familyName,variant:p.modelName||'',comparisonVariant:p.modelName||'',bodyType:({Hatchback:'Halvkombi',StationWagon:'Kombi',Sedan:'Sedan',SUV:'SUV',Coupe:'Coupé',Convertible:'Cabriolet'})[p.body]||p.body||'',year:Number(p.modelYear),mileage:Math.round(p.odometerReading/10),price:a.buyNowAmount,fuel,gearbox,url:a.auctionUrl,images:(a.previewImages||[]).map(i=>i.uri).filter(Boolean).slice(0,40),registration:p.registrationPlate,vin:base?.vin,city:a.processObject.locationInfo?.facility?.city||'',seller:'Kvdbil',description,publishedAt:a.publishedAt}];
+  return [{id:String(a.id),title:p.adHeader||p.title,make:p.brand,model:p.brand==='BMW'?p.familyName.replace(/-serien/i,'-serie'):p.familyName,variant:p.modelName||'',comparisonVariant:p.modelName||'',bodyType:({Hatchback:'Halvkombi',StationWagon:'Kombi',Sedan:'Sedan',SUV:'SUV',Coupe:'Coupé',Convertible:'Cabriolet'})[p.body]||p.body||'',year:Number(p.modelYear),mileage:Math.round(p.odometerReading/10),price:a.buyNowAmount,fuel,gearbox,url:a.auctionUrl,images:(a.previewImages||[]).map(i=>i.uri).filter(Boolean).slice(0,40),registration:p.registrationPlate,vin:base?.vin,city:a.processObject.locationInfo?.facility?.city||'',sellerType:'dealer',seller:'Kvdbil',description,publishedAt:a.publishedAt}];
  });
  return {listings,count:data.auctions.length,total:data.hits};
 }
