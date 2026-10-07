@@ -1,0 +1,8 @@
+const fs=require('node:fs'),{spawn}=require('node:child_process');
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function apply(config,{launch=target=>spawn('/usr/bin/open',['-n',target,'--args','--carcrow-update-check',config.nonce],{stdio:'ignore'}),alive=pid=>{try{process.kill(pid,0);return true;}catch{return false;}}}={}){
+ let swapped=false;try{const start=Date.now();while(alive(config.pid)){if(Date.now()-start>config.timeout)throw new Error('Appen stängdes inte.');await sleep(200);}fs.rmSync(config.backup,{recursive:true,force:true});fs.renameSync(config.target,config.backup);try{fs.renameSync(config.incoming,config.target);swapped=true;}catch(e){fs.renameSync(config.backup,config.target);throw e;}launch(config.target);const launched=Date.now();while(!fs.existsSync(config.ready)||fs.readFileSync(config.ready,'utf8')!==config.nonce){if(Date.now()-launched>config.timeout)throw new Error('Den nya appen kunde inte starta.');await sleep(200);}fs.writeFileSync(config.result,JSON.stringify({ok:true,at:new Date().toISOString()}),{mode:0o600});fs.rmSync(config.backup,{recursive:true,force:true});if(config.stage)fs.rmSync(config.stage,{recursive:true,force:true});if(config.archive)fs.rmSync(config.archive,{force:true});}
+ catch(e){if(swapped){fs.rmSync(config.target,{recursive:true,force:true});fs.renameSync(config.backup,config.target);launch(config.target);}fs.writeFileSync(config.result,JSON.stringify({ok:false,error:e.message}),{mode:0o600});throw e;}
+}
+if(require.main===module)apply(JSON.parse(fs.readFileSync(process.argv[2],'utf8'))).catch(()=>process.exitCode=1);
+module.exports={apply};

@@ -1,0 +1,4 @@
+{
+  "endpoint": "https://carcrow-ai.vea1se.workers.dev/v1/chat/completions",
+  "model": "openrouter/free"
+}

@@ -28,23 +28,26 @@ class Market {
   constructor(store,{request=requestJSON}={}){this.store=store;this.request=request;this.jobs=new Map();}
   coverage(filters={}){return this.store.setting(scopeKey(filters))||{sources:{}};}
   reset(filters={}){this.store.setSetting(scopeKey(filters),{sources:{}});}
-  async next(filters={}, {signal,onProgress=()=>{},sources:onlySources,fresh=false,excludeIds=[],session}={}){
+  async next(filters={}, {signal,onProgress=()=>{},onResults=()=>{},sources:onlySources,fresh=false,excludeIds=[],session}={}){
     if(signal?.aborted)throw cancelled();const f=validateFilters(filters),key=scopeKey(f),jobKey=key+':'+(session?.id||'')+':'+(fresh?'fresh':'crawl')+':'+(onlySources||[]).join(',');
     let job=this.jobs.get(jobKey);
     if(!job){
-      job={controller:new AbortController(),listeners:new Set(),subscribers:0};this.jobs.set(jobKey,job);
-      job.promise=Promise.resolve().then(()=>this.fetchPage(f,{signal:job.controller.signal,onProgress:e=>{for(const listener of job.listeners)listener(e);},sources:onlySources,fresh,session})).finally(()=>this.jobs.delete(jobKey));
+      job={controller:new AbortController(),listeners:new Set(),batches:new Set(),ids:new Set(),subscribers:0};this.jobs.set(jobKey,job);
+      job.promise=Promise.resolve().then(()=>this.fetchPage(f,{signal:job.controller.signal,onProgress:e=>{for(const listener of job.listeners)listener(e);},onBatch:ids=>{for(const id of ids){job.ids.add(id);session?.ids.add(id);}for(const listener of job.batches)listener();},sources:onlySources,fresh,session})).finally(()=>this.jobs.delete(jobKey));
     }
     job.subscribers++;job.listeners.add(onProgress);
+    let timer=null;const publish=()=>{timer=null;if(signal?.aborted)return;const partial=this.store.search(f,false,0,false,session?[...session.ids]:[...job.ids],false,excludeIds);if(partial.items.length)onResults({...partial,filters:f,sessionId:session?.id,hasMore:true,remaining:Math.max(0,partial.total-partial.items.length)});};
+    const batch=()=>{if(!timer)timer=setTimeout(publish,80);};job.batches.add(batch);
     return new Promise((resolve,reject)=>{
-      let settled=false;const cleanup=()=>{job.listeners.delete(onProgress);job.subscribers--;signal?.removeEventListener('abort',abort);};
+      let settled=false;const cleanup=()=>{clearTimeout(timer);job.batches.delete(batch);job.listeners.delete(onProgress);job.subscribers--;signal?.removeEventListener('abort',abort);};
       const abort=()=>{if(settled)return;settled=true;cleanup();if(!job.subscribers)job.controller.abort();reject(cancelled());};signal?.addEventListener('abort',abort,{once:true});
       job.promise.then(result=>{if(settled)return;settled=true;cleanup();if(session)for(const id of result.vehicleIds||[])session.ids.add(id);const selected=session?[...session.ids]:null;const unseen=this.store.search(f,false,0,false,selected,false,excludeIds);resolve({...result,...unseen,total:this.store.search(f,false,0,false,selected).total,remaining:Math.max(0,unseen.total-unseen.items.length),filters:f,sessionId:session?.id});},e=>{if(settled)return;settled=true;cleanup();reject(e);});
       if(signal?.aborted)abort();
     });
   }
-  async fetchPage(f,{signal,onProgress,sources:onlySources,fresh,session}){
+  async fetchPage(f,{signal,onProgress,onBatch=()=>{},sources:onlySources,fresh,session}){
     const key=scopeKey(f),state=session?.state||(fresh?{sources:{}}:this.coverage(f)),sources=this.store.sources().filter(s=>s.enabled&&s.adapter&&(!onlySources||onlySources.includes(s.id)));
+    const imported=(source,ads)=>this.store.rows('SELECT DISTINCT vehicle_id FROM listings WHERE id IN (SELECT value FROM json_each(?))',[JSON.stringify(ads.map(ad=>source.id+':'+ad.id))]).map(r=>r.vehicle_id);
     const settled=await Promise.allSettled(sources.map(async source=>{
       const groups=f.makes?.length?f.makes:[null];let cursor=state.sources[source.id]||{page:1,group:0,done:false,received:0,pages:0};
       if(cursor.done)return {source:source.name,done:true,received:0};
@@ -72,7 +75,7 @@ class Market {
           const workers=await Promise.allSettled(Array.from({length:Math.min(3,links.length)},async()=>{
             while(index<links.length){
               if(signal.aborted)throw cancelled();const detailURL=links[index++];
-              try{const body=await this.request(detailURL,{kind:'html',signal}),ad=parseDetail(source.id,body,detailURL);if(ad&&!ad.inactive){normalizeListing(ad,source);ads.push(ad);this.store.importSnapshot(source,{schemaVersion:1,complete:false,listings:[ad]});}}
+              try{const body=await this.request(detailURL,{kind:'html',signal}),ad=parseDetail(source.id,body,detailURL);if(ad&&!ad.inactive){normalizeListing(ad,source);ads.push(ad);this.store.importSnapshot(source,{schemaVersion:1,complete:false,listings:[ad]});onBatch(imported(source,[ad]));}}
               catch(e){if(e.name==='AbortError')throw e;if(e.status!==404&&e.status!==410)failures.push(e.message);}
               completed++;onProgress({type:'source',source:source.name,status:'running',label:source.name+' · '+completed+'/'+links.length+' annonser',page:cursor.page,received:ads.length});
             }
@@ -82,7 +85,7 @@ class Market {
         }
         if(signal.aborted)throw cancelled();if(signature&&signature===cursor.signature)nextURL=null;
         const valid=ads.filter(ad=>{try{normalizeListing(ad,source);return true;}catch{return false;}});
-        if(['blocket-public','riddermark-public','kvd-public'].includes(source.adapter))this.store.importSnapshot(source,{schemaVersion:1,complete:false,listings:valid});
+        if(['blocket-public','riddermark-public','kvd-public'].includes(source.adapter)){this.store.importSnapshot(source,{schemaVersion:1,complete:false,listings:valid});onBatch(imported(source,valid));}
         let next={...cursor,page:cursor.page+1,nextURL,signature,total:total??cursor.total,pages:cursor.pages+1,received:cursor.received+valid.length,error:null,limited,done:!nextURL};
         if(source.adapter!=='blocket-public'&&!nextURL&&cursor.group<groups.length-1)next={...next,group:cursor.group+1,page:1,nextURL:null,signature:null,done:false};
         state.sources[source.id]=next;if(!fresh&&!session)this.store.setSetting(key,state);this.store.sourceStatus(source.id,null,true);

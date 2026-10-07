@@ -34,6 +34,8 @@ if ($InstallOnEphemeralRunner) {
     $env:CARCROW_SCREENSHOTS = Join-Path (Get-Location) 'test-results\installed'
     node scripts/smoke.cjs
     if ($LASTEXITCODE -ne 0) { throw 'Gränssnittskontrollen av den installerade appen misslyckades' }
+    node scripts/update-install.cjs
+    if ($LASTEXITCODE -ne 0) { throw 'Uppdateringen eller databevarandet misslyckades' }
     @{
         status = 'passed'
         installerExitCode = $process.ExitCode

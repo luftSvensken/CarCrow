@@ -17,7 +17,7 @@ async function requestJSON(url, {headers={},body=null,maxBytes=20*1024*1024,time
   if(!addresses.length||addresses.some(x=>privateIP(x.address)))throw new Error('Lokala nätverksadresser stöds inte som datakälla.');
   const chosen=addresses.find(x=>x.family===4)||addresses[0];
   return new Promise((resolve,reject)=>{
-    const req=https.request(u,{method:body?'POST':'GET',headers:{'User-Agent':'CarCrow/0.1 (private-desktop-client)','Accept':kind==='html'?'text/html':'application/json',...headers},lookup:(_h,opts,cb)=>opts?.all?cb(null,[chosen]):cb(null,chosen.address,chosen.family)},res=>{
+    const req=https.request(u,{method:body?'POST':'GET',headers:{'User-Agent':'CarCrow/0.4 (private-desktop-client)','Accept':kind==='html'?'text/html':'application/json',...headers},lookup:(_h,opts,cb)=>opts?.all?cb(null,[chosen]):cb(null,chosen.address,chosen.family)},res=>{
       if([301,302,303,307,308].includes(res.statusCode)&&kind==='html'&&!body&&res.headers.location){
         res.resume();try{const next=new URL(res.headers.location,u);if(next.origin!==u.origin||redirects>=3)throw new Error('Källans omdirigering stöds inte.');resolve(requestJSON(next.href,{headers,body,maxBytes,timeout,kind,signal,redirects:redirects+1}));}catch(e){reject(e);}return;
       }

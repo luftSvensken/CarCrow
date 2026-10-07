@@ -1,6 +1,6 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),{Worker}=require('node:worker_threads');
 class EmbeddingRuntime {
- constructor(root,{status=()=>{},modelDir}={}){this.root=root;this.modelDir=modelDir||process.env.CARCROW_EMBED_MODEL||path.join(__dirname,'../models/embeddinggemma-2');this.status=status;this.pending=new Map();this.starting=null;this.worker=null;this.state={ready:false,label:'Rekommendationer räknas på din dator'};}
+ constructor(root,{status=()=>{},modelDir}={}){this.root=root;this.modelDir=modelDir||process.env.CARCROW_EMBED_MODEL||path.join(__dirname,'../models/embeddinggemma-2');this.status=status;try{this.cacheKey='google/embeddinggemma-2:'+crypto.createHash('sha256').update(fs.readFileSync(path.join(this.modelDir,'manifest.json'))).digest('hex');}catch{this.cacheKey='google/embeddinggemma-2:missing';}this.pending=new Map();this.starting=null;this.worker=null;this.state={ready:false,label:'Rekommendationer räknas på din dator'};}
  update(label,extra={}){this.state={...this.state,label,...extra};this.status(this.state);}
  async start(){if(this.state.ready&&this.worker)return;if(this.starting)return this.starting;this.starting=this.boot().finally(()=>this.starting=null);return this.starting;}
  async boot(){
