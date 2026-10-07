@@ -37,7 +37,7 @@ class Updater {
  }
  async prepareWindows(file){
   if(!this.app.isPackaged)throw new Error('Installera uppdateringen i den installerade CarCrow-appen.');const installer=path.join(this.root,'CarCrow-Update.exe');fs.renameSync(file,installer);const config={pid:process.pid,exe:process.execPath,installer,ready:path.join(this.root,'ready'),result:path.join(this.root,'result.json'),nonce:crypto.randomUUID(),timeout:60000};
-  fs.rmSync(config.ready,{force:true});fs.writeFileSync(path.join(this.root,'install.json'),JSON.stringify(config),{mode:0o600});const child=spawn('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(windowsScript(config),'utf16le').toString('base64')],{detached:true,stdio:'ignore',windowsHide:true});await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});child.unref();
+  fs.rmSync(config.ready,{force:true});const started=config.ready+'.starting';fs.rmSync(started,{force:true});fs.writeFileSync(path.join(this.root,'install.json'),JSON.stringify(config),{mode:0o600});const log=fs.openSync(path.join(this.root,'helper.log'),'w',0o600);try{const child=spawn('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(windowsScript(config),'utf16le').toString('base64')],{detached:true,stdio:['ignore',log,log],windowsHide:true});await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});child.unref();const at=Date.now();while(!fs.existsSync(started)){if(Date.now()-at>10000){child.kill();throw new Error('Windows kunde inte starta uppdateraren. Appen är fortfarande öppen; försök igen.');}await new Promise(resolve=>setTimeout(resolve,100));}fs.rmSync(started,{force:true});}finally{fs.closeSync(log);}
  }
 
  acknowledge(){const configFile=path.join(this.root,'install.json');if(!fs.existsSync(configFile))return;try{const config=JSON.parse(fs.readFileSync(configFile,'utf8'));const at=process.argv.indexOf('--carcrow-update-check');if(at>=0&&process.argv[at+1]===config.nonce){fs.writeFileSync(config.ready,config.nonce,{mode:0o600});fs.writeFileSync(path.join(this.root,'running.json'),JSON.stringify({pid:process.pid,version:this.app.getVersion()}),{mode:0o600});fs.rmSync(configFile,{force:true});}}catch{}}
@@ -49,6 +49,7 @@ function windowsScript(c){
  return `$ErrorActionPreference='Stop'
  $backupReady=$false;$newProcess=$null
  try {
+  Set-Content -LiteralPath ${quote(c.ready+'.starting')} -Value ${quote(c.nonce)}
   Wait-Process -Id ${c.pid} -Timeout 120 -ErrorAction SilentlyContinue
   if(Get-Process -Id ${c.pid} -ErrorAction SilentlyContinue){throw 'Appen stängdes inte.'}
   Copy-Item -LiteralPath ${quote(installPath)} -Destination ${quote(backup)} -Recurse

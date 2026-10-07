@@ -44,12 +44,12 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
-      - uses: actions/cache@v5
+      - uses: actions/cache/restore@v5
         id: model-cache
         with:
           path: models/embeddinggemma-2/
           key: embeddinggemma2-windows-reduced-${{ hashFiles('scripts/export-embeddinggemma2.py', 'scripts/requirements-model.txt') }}
-      - uses: actions/cache@v5
+      - uses: actions/cache/restore@v5
         with:
           path: ~/AppData/Local/electron-builder/Cache
           key: electron-builder-windows-${{ hashFiles('package-lock.json') }}
@@ -62,6 +62,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Model export failed' }
       - name: Verify the on-device model
         run: node scripts/check-embeddings.cjs
+      - uses: actions/cache/save@v5
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        with:
+          path: models/embeddinggemma-2/
+          key: embeddinggemma2-windows-reduced-${{ hashFiles('scripts/export-embeddinggemma2.py', 'scripts/requirements-model.txt') }}
       - name: Save the verified portable model
         uses: actions/upload-artifact@v7
         with:
@@ -70,6 +75,10 @@ jobs:
           retention-days: 7
       - name: Package Windows without publishing
         run: npx electron-builder --publish never --win zip nsis --x64 --config.nsis.artifactName=CarCrow-Windows-Setup.exe --config.win.artifactName=CarCrow-Windows.zip
+      - uses: actions/cache/save@v5
+        with:
+          path: ~/AppData/Local/electron-builder/Cache
+          key: electron-builder-windows-${{ hashFiles('package-lock.json') }}
       - name: Verify portable app and actual installation
         shell: pwsh
         run: ./scripts/verify-windows.ps1 -SkipBuild -InstallOnEphemeralRunner
