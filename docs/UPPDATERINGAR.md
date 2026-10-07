@@ -1,6 +1,6 @@
 # Uppdateringar och drift
 
-CarCrow 0.5 använder en Cloudflare Worker på gratisnivån. Den publicerade appen innehåller ingen OpenRouter-nyckel. `electron/ai-config.json` pekar på Workern, som väljer Nemotron 3 Super (free) och Nemotron 3 Ultra (free) som reserv. Endast godkända gratismodeller och strömmande anrop tillåts; prisgränsen för indata, utdata och anrop är noll. Nyckeln lagras som `OPENROUTER_API_KEY` i Cloudflare. Webbsökningen använder Tavilys officiella API via samma Worker. `TAVILY_API_KEY` är en separat Cloudflare-hemlighet. Gratisnivån ger 1 000 krediter per månad, och Workern tvingar basic-sökning utan betalda extrafunktioner. En sökning kostar en kredit och läsning av upp till tre relevanta källor högst en extra kredit. Identiska frågor cachas i 15 minuter. En gräns på sex sökningar per IP och minut minskar missbruk.
+CarCrow 0.6 använder en Cloudflare Worker på gratisnivån. Den publicerade appen innehåller ingen OpenRouter-nyckel. `electron/ai-config.json` pekar på Workern, som väljer Nemotron 3 Super (free) och Nemotron 3 Ultra (free) som reserv. Endast godkända gratismodeller och strömmande anrop tillåts; prisgränsen för indata, utdata och anrop är noll. Nyckeln lagras som `OPENROUTER_API_KEY` i Cloudflare. Webbsökningen använder Tavilys officiella API via samma Worker. `TAVILY_API_KEY` är en separat Cloudflare-hemlighet. Gratisnivån ger 1 000 krediter per månad, och Workern tvingar basic-sökning utan betalda extrafunktioner. En sökning kostar en kredit och läsning av upp till tre relevanta källor högst en extra kredit. Identiska frågor cachas i 15 minuter. En gräns på sex sökningar per IP och minut minskar missbruk.
 
 En gräns på 18 anrop per IP och minut minskar missbruk; OpenRouters delade gratiskvot kan fortfarande ta slut.
 
@@ -28,3 +28,7 @@ npm run deploy
 ```
 
 Skriv aldrig hemligheter i Git, GitHub Actions-loggar eller apppaket. Workern behöver inget betalt abonnemang. Gratisnivåernas kvoter begränsar tillgängligheten och appen ska visa det tydligt.
+
+## Ortsdata och valfri position
+
+Ortsnamn och centrumkoordinater kommer från [GeoNames](https://www.geonames.org/) under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Den medföljande listan är bearbetad till svenska orter. Återskapa den med `node scripts/prepare-places.cjs SE.txt admin1CodesASCII.txt`. Avstånd är ungefärliga fågelvägsavstånd; när annonsen bara anger ort används ortens centrum. Efter uttryckligt samtycke kan Workern returnera anslutningens ungefärliga svenska ort. Ingen kontinuerlig positionsspårning sker. VPN kan ge fel ort. AI:n får ortsnamnet, aldrig koordinaterna. Stäng av delningen i Inställningar för att radera den automatiska platsen. Manuell ort fungerar utan samtycke.

@@ -14,7 +14,6 @@ const sourceCatalog=[
   {id:'blocket',name:'Blocket',adapter:'blocket-public',hosts:['www.blocket.se','blocket.se'],docs:'https://blocket-api.se'},
   {id:'bytbil',name:'Bytbil',adapter:'public-html',hosts:['www.bytbil.com','bytbil.com'],docs:'https://www.bytbil.com'},
   {id:'wayke',name:'Wayke',adapter:'public-html',hosts:['www.wayke.se','wayke.se'],docs:'https://www.wayke.se/sok'},
-  {id:'bilweb',name:'Bilweb',adapter:'public-html',hosts:['bilweb.se','www.bilweb.se'],docs:'https://bilweb.se'},
   {id:'kvd',name:'Kvdbil · fast pris',adapter:'kvd-public',hosts:['www.kvd.se','kvd.se'],docs:'https://www.kvd.se/begagnade-bilar?auctionType=BUY_NOW'},
   {id:'riddermark',name:'Riddermark Bil',adapter:'riddermark-public',hosts:['www.riddermarkbil.se'],docs:'https://www.riddermarkbil.se/kopa-bil/'}
 ];
@@ -28,17 +27,23 @@ async function dispatch(action,p={}){
   if(!p||typeof p!=='object'||Array.isArray(p))throw new Error('Ogiltig begäran.');
   const demo=demoMode();
   switch(action){
-    case 'bootstrap':return {stats:{...store.stats(demo),aiConfigured:!demoMode()&&!!require('./ai-config.json').endpoint,model:require('./ai-config.json').model},facets:store.facets(demo),theme:store.setting('theme')||'system',dark:nativeTheme.shouldUseDarkColors,demo,sources:store.sources().filter(s=>!s.demo).map(sourcePublic),watches:store.watches(demo),checkingWatches:!!watchChecker.running,platform:process.platform,updates:updater.public(),version:app.getVersion()};
+    case 'bootstrap':return {stats:{...store.stats(demo),aiConfigured:!demoMode()&&!!require('./ai-config.json').endpoint,model:require('./ai-config.json').model},facets:store.facets(demo),theme:store.setting('theme')||'system',dark:nativeTheme.shouldUseDarkColors,demo,sources:store.sources().filter(s=>!s.demo).map(sourcePublic),watches:store.watches(demo),checkingWatches:!!watchChecker.running,platform:process.platform,updates:updater.public(),version:app.getVersion(),locationConsent:!!store.setting('locationConsent'),userLocation:store.setting('userLocation')};
     case 'uiReady':updater.acknowledge();if(process.argv.includes('--carcrow-update-hidden'))setTimeout(()=>app.quit(),500);return true;
-    case 'chats':return agent.list();
+    case 'chats':return agent.list(p.query||'');
+    case 'validateFilters':return validateFilters(p.filters);
+    case 'places':return require('./geography.cjs').lookupPlaces(p.query||'');
+    case 'locationConsent':{store.setSetting('locationConsent',p.enabled===true);if(!p.enabled)store.setSetting('userLocation',null);changed();return true;}
+    case 'approximateLocation':{if(!store.setting('locationConsent'))throw new Error('Aktivera platsdelning först.');const endpoint=new URL('/v1/location',require('./ai-config.json').endpoint).href;const raw=await requestJSON(endpoint,{body:{consent:true},timeout:8000,maxBytes:4096});const place=require('./geography.cjs').validateLocation(raw);store.setSetting('userLocation',{...place,precision:'network'});changed();return {...place,precision:'network'};}
+    case 'location':{if(!store.setting('locationConsent'))throw new Error('Aktivera platsdelning först.');const geo=require('./geography.cjs');if(!Number.isFinite(p.latitude)||Math.abs(p.latitude)>90||!Number.isFinite(p.longitude)||Math.abs(p.longitude)>180)throw new Error('Ogiltig position.');const place=geo.nearestPlace(p.latitude,p.longitude);if(!place)throw new Error('Platsen kunde inte hittas.');store.setSetting('userLocation',place);changed();return place;}
+    case 'marketRefine':return sessions.refine(p.sessionId,p.filters);
     case 'chat':return agent.get(p.id);
     case 'chatDelete':agent.remove(p.id);changed();return true;
-    case 'agentStart':return agent.start({...p,ids:p.ids?.length?p.ids:/den här|denna bil|dess (?:fel|motor)/i.test(p.text||'')&&lastOpen&&Date.now()-lastOpen.at<600000?[lastOpen.id]:[]});
+    case 'agentStart':return agent.start({...p,autoLocation:store.setting('locationConsent')?store.setting('userLocation'):null,ids:p.ids?.length?p.ids:/den här|denna bil|dess (?:fel|motor)/i.test(p.text||'')&&lastOpen&&Date.now()-lastOpen.at<600000?[lastOpen.id]:[]});
     case 'agentStop':agent.stop(p.runId);return true;
     case 'marketCancel':marketRequests.get(p.requestId)?.abort();return true;
     case 'marketStart':
     case 'marketPage':{
-      const filters=validateFilters(p.filters);if(action==='marketStart'&&p.track)store.recordPreference('search',{filters});
+      const filters=require('./search-intent.cjs').manualIntent(p.filters);if(action==='marketStart'&&p.track)store.recordPreference('search',{filters});
       if(demo)return {...store.search(filters,true,0,false,null,false,p.excludeIds||[]),filters,hasMore:false};
       const requestId=p.requestId||crypto.randomUUID();if(typeof requestId!=='string'||!/^[-a-zA-Z0-9]{1,64}$/.test(requestId))throw new Error('Ogiltig sökbegäran.');
       const controller=new AbortController();marketRequests.set(requestId,controller);
@@ -68,6 +73,7 @@ async function dispatch(action,p={}){
       changed();return true;
     }
     case 'saveSource':{
+      if(p.id==='bilweb')throw new Error('Bilweb är borttaget som datakälla.');
       const id=p.id||crypto.randomUUID();const catalog=sourceCatalog.find(s=>s.id===id);const old=store.sources().find(s=>s.id===id);
       const s={id,name:catalog?.name||String(p.name||'Eget flöde').trim().slice(0,60),adapter:catalog?.adapter,hosts:catalog?.hosts||String(p.hosts||'').split(',').map(x=>x.trim()).filter(Boolean),docs:catalog?.docs||null,enabled:!!p.enabled,feedURL:catalog?.adapter?catalog.docs:p.feedURL?httpsURL(p.feedURL):'',approval:String(p.approval||'').trim().slice(0,300),approvedUntil:p.approvedUntil?new Date(p.approvedUntil+'T23:59:59Z').toISOString():null,mediaAllowed:catalog?.adapter?true:!!p.mediaAllowed,intervalMinutes:Number(p.intervalMinutes||60),retentionDays:Number(p.retentionDays||30)};
       if(s.intervalMinutes<15||s.intervalMinutes>1440||!Number.isInteger(s.intervalMinutes))throw new Error('Uppdateringsintervallet måste vara 15–1 440 minuter.');
@@ -96,7 +102,9 @@ async function dispatch(action,p={}){
 function createWindow(){
   win=new BrowserWindow({show:!process.argv.includes('--carcrow-update-hidden'),width:1320,height:900,minWidth:720,minHeight:620,title:'CarCrow',backgroundColor:nativeTheme.shouldUseDarkColors?'#17181c':'#ffffff',titleBarStyle:process.platform==='darwin'?'hiddenInset':'default',trafficLightPosition:{x:22,y:22},webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));win.webContents.on('will-navigate',e=>e.preventDefault());
-  win.webContents.session.setPermissionRequestHandler((_wc,_permission,cb)=>cb(false));
+  const trusted=wc=>wc===win.webContents;const allowed=(wc,permission)=>permission==='geolocation'&&trusted(wc)&&!!store.setting('locationConsent');
+  win.webContents.session.setPermissionCheckHandler((wc,permission)=>allowed(wc,permission));
+  win.webContents.session.setPermissionRequestHandler((wc,permission,cb)=>cb(allowed(wc,permission)));
   win.webContents.session.webRequest.onBeforeSendHeaders((details,cb)=>{if(details.resourceType==='image')delete details.requestHeaders.Referer;cb({requestHeaders:details.requestHeaders});});
   win.loadFile(path.join(__dirname,'../dist/index.html'));
   nativeTheme.on('updated',()=>{if(win&&!win.isDestroyed()){win.setBackgroundColor(nativeTheme.shouldUseDarkColors?'#17181c':'#ffffff');changed();}});
@@ -116,7 +124,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
 
     for(const s of sourceCatalog){const existing=store.sources().find(x=>x.id===s.id);store.setSource({...existing,...s,enabled:s.adapter&&!existing?.adapter?true:existing?.enabled??!!s.adapter,mediaAllowed:!!s.adapter,feedURL:s.adapter?s.docs:existing?.feedURL||'',intervalMinutes:60,retentionDays:7});}
     if(process.env.CARCROW_TEST_DEMO==='1'){store.setSetting('demo',true);seedDemo(store);}
-    store.db.run("DELETE FROM sources WHERE id='facebook'");
+    store.db.run("DELETE FROM sources WHERE id='facebook'");store.removeSource('bilweb');
     store.purgeExpired();
     market=new Market(store);sessions=new SearchSessions(store,market);agent=new CarAgent({store,market,sessions,key:aiKey,demo:demoMode,emit:e=>{if(win&&!win.isDestroyed())win.webContents.send('carcrow:agent',e);}});
     const recommendationStatus=e=>{if(win&&!win.isDestroyed())win.webContents.send('carcrow:market',{source:'recommendations',label:e.label,status:e.ready?'done':'running'});};

@@ -1,6 +1,6 @@
 # CarCrow
 
-En svensk bilsökapp för Windows och Mac. Starten är en chatt: beskriv bilen du söker och följ när CarCrow söker, öppnar originalannonser och jämför priser. Bilder och bilkort kommer från den lokala annonsdatabasen.
+En svensk bilsökapp för Windows och Mac. Starten är en chatt: beskriv bilen du söker och följ när CarCrow söker, öppnar originalannonser och jämför priser. AI:n handplockar bilkort från verkliga, kontrollerade annonser.
 
 AI använder **Nemotron 3 Super (free)** med **Nemotron 3 Ultra (free)** som reserv via OpenRouter. Modellerna är fasta; appen använder inte gratisrouterns slumpmässiga val. Verktygsanrop och riktig strömning stöds. Workern tillåter endast godkända gratismodeller och sätter prisgränsen till noll. Hastighet och tillgänglighet varierar. AI-nyckeln ligger som en hemlighet i Cloudflare Worker. Appen innehåller ingen AI-nyckel, och användaren behöver varken ange nyckel eller logga in. Gratisnivåernas kvoter delas av användarna. Vid uppnådd kvot visas ett fel; appen växlar aldrig till betalning.
 
@@ -14,9 +14,17 @@ AI använder **Nemotron 3 Super (free)** med **Nemotron 3 Ultra (free)** som res
 
 Mac-paketet har en ad-hoc-signatur som förseglar hela appens innehåll. Det är inte Apple-notariserat och saknar Developer ID-certifikat. Vid första öppningen kan macOS därför kräva Systeminställningar → Integritet och säkerhet → Öppna ändå. En varning om att utvecklaren inte kan verifieras är skild från en trasig kodsignatur. Windows kan visa SmartScreen för en osignerad app.
 
+## Nytt i 0.6
+
+- Filter med sökbara märken och modeller, egna märken, pris- och milintervall, kaross, säljartyp, bilder, datum och datakällor. Sortering sker lokalt i den hämtade annonsgruppen.
+- Välj ort, sökradie och närmaste bilar. Valfri ungefärlig platsdelning är avstängd från början. AI:n får endast ortsnamnet och sökradien.
+- AI:n väntar på källomgången, granskar original och handplockar ett mindre urval med korta motiveringar. Den kan söka på webben efter andra verkliga bilannonser och visa verifierade träffar som vanliga bilkort. Saknade uppgifter visas som okända.
+- Sök lokalt i chattarnas rubriker och meddelanden.
+- Bilweb har tagits bort. Sparade gamla bilar och chattar behålls.
+
 ## Data och AI
 
-Kvdbils fastprisannonser och Riddermarks bilannonser ingår också. Blocket ansluts via den inofficiella tjänsten [BlocketAPI](https://blocket-api.se). Bytbil, Bilweb och Wayke läses via vanliga publika sök- och annonssidor. Det finns inga cookies, inloggningssessioner, proxyrotationer eller kringgående av anti-bot-system. HTTP 403/429 och formatfel visas och befintliga data behålls. HTTPS-omdirigeringar följs endast till samma ursprung och högst tre gånger.
+Kvdbils fastprisannonser och Riddermarks bilannonser ingår också. Blocket ansluts via den inofficiella tjänsten [BlocketAPI](https://blocket-api.se). Bytbil och Wayke läses via vanliga publika sök- och annonssidor. Det finns inga cookies, inloggningssessioner, proxyrotationer eller kringgående av anti-bot-system. HTTP 403/429 och formatfel visas och befintliga data behålls. HTTPS-omdirigeringar följs endast till samma ursprung och högst tre gånger.
 
 Sökningen hämtar aktuella sidor när du söker och skrollar. CarCrow visar inget totalt träffantal och behöver inte köras i bakgrunden. SQLite används som tillfällig annonscache och för dina sparade bilar och chattar. Obesläktade gamla annonser visas inte i en ny sökning. Källornas sökfönster och tillgänglighet kan begränsa resultatet. Köpesannonser och symboliska priser på högst 100 kr ingår inte som prissatta försäljningsannonser. AI:n inväntar varje källomgång och fyller ett användbart urval innan slutsatsen visas. För kvalitativa önskemål som första bil hämtas både de billigaste och nypublicerade alternativen med samma uttryckliga budget; rekommenderade märken får inte bli påhittade hårda krav.
 

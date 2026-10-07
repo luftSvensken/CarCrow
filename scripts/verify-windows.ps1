@@ -18,6 +18,8 @@ if (-not $SkipBuild) {
 $env:CARCROW_EXECUTABLE = Join-Path (Get-Location) 'release\win-unpacked\CarCrow.exe'
 $env:CARCROW_SCREENSHOTS = Join-Path (Get-Location) 'test-results\portable'
 node scripts/smoke.cjs
+if ($LASTEXITCODE -ne 0) { throw 'Den första gränssnittskontrollen misslyckades' }
+node scripts/smoke06.cjs
 if ($LASTEXITCODE -ne 0) { throw 'Gränssnittskontrollen av det portabla paketet misslyckades' }
 if ($InstallOnEphemeralRunner) {
     $installDirectory = Join-Path $env:RUNNER_TEMP ('carcrow-install-' + [guid]::NewGuid().ToString('N'))
@@ -33,6 +35,8 @@ if ($InstallOnEphemeralRunner) {
     if (-not (Test-Path -LiteralPath $env:CARCROW_EXECUTABLE)) { throw 'Den installerade appen saknas.' }
     $env:CARCROW_SCREENSHOTS = Join-Path (Get-Location) 'test-results\installed'
     node scripts/smoke.cjs
+    if ($LASTEXITCODE -ne 0) { throw 'Den första gränssnittskontrollen misslyckades' }
+    node scripts/smoke06.cjs
     if ($LASTEXITCODE -ne 0) { throw 'Gränssnittskontrollen av den installerade appen misslyckades' }
     $env:CARCROW_AUTOMATIC_UPDATE = '1'
     node scripts/update-install.cjs

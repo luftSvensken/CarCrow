@@ -1,7 +1,7 @@
 // One lexical search language for source queries, the database and the agent.
 // Index actual ad fields, never JSON keys, image URLs or tracking parameters.
 const aliases={vw:'volkswagen',volkswagon:'volkswagen',volksvagen:'volkswagen',merc:'mercedes benz',mercedes:'mercedes benz',mb:'mercedes benz',citroen:'citroen',skoda:'skoda',automatisk:'automat',automatic:'automat',manual:'manuell',petrol:'bensin',gasoline:'bensin',electric:'el',series:'serie',serien:'serie'};
-const makes=['Audi','BMW','Citroën','Dacia','DS','Fiat','Ford','Honda','Hyundai','Kia','Lexus','Mazda','Mercedes-Benz','MINI','Mitsubishi','Nissan','Opel','Peugeot','Polestar','Renault','Saab','SEAT','Skoda','Subaru','Suzuki','Tesla','Toyota','Volkswagen','Volvo'];
+const makes=require('./brands.cjs').displayBrands;
 const vocabulary=[...makes.map(x=>basic(x)), 'business','summum','momentum','inscription','r design','dragkrok','panorama','octavia','passat','golf','corolla','yaris','avensis','auris','jazz','civic','focus','fiesta','mondeo','outback','forester','tiguan','touran','superb','fabia'];
 function basic(s){return String(s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');}
 function normalize(s){

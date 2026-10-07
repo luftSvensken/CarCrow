@@ -21,9 +21,15 @@ function explicitBounds(text){
  const maxYear=text.match(/\b(?:till|senast)\s+(19\d{2}|20\d{2})\b/i);if(maxYear)bounds.maxYear=Number(maxYear[1]);
  return validateFilters(bounds);
 }
+function explicitLocation(text){
+ const geo=require('./geography.cjs');for(const match of text.matchAll(/\b(?:i|nära|kring|runt|omkring|från)\s+([A-Za-zÅÄÖåäöÉé][A-Za-zÅÄÖåäöÉé -]{1,60})/gu)){
+  const words=match[1].split(/\s+(?:under|max|och|med|automat|manuell|bensin|diesel|för)\b/i)[0].trim().split(/\s+/);for(let n=Math.min(4,words.length);n>0;n--){const place=geo.resolvePlace(words.slice(0,n).join(' '));if(place){const radius=text.match(/\binom\s+(\d+)\s*(km|mil)\b/i);return {label:place.label,latitude:place.latitude,longitude:place.longitude,...(radius?{radiusKm:Number(radius[1])*(radius[2].toLowerCase()==='mil'?10:1)}:{})};}}
+ }return null;
+}
 function userIntent(texts,ui={},facets=[]){
  const out={...ui};
  for(const text of texts){
+  const location=explicitLocation(text);if(location){out.location=location;if(/nära|närmast|närheten/i.test(text))out.sort='distance';}
   const brands=explicitMakes(text),models=explicitModels(text,facets);
   if(brands.length){out.makes=brands;delete out.models;}
   if(models.length)out.models=models;
@@ -42,8 +48,17 @@ function groundedFilters(proposed,intent,texts){
  // hard restrictions. "Reliable first car" must not silently mean Honda 2010+.
  const result={...intent},evidence=normalize(texts.join(' '));
  if(proposed.query){const q=normalize(proposed.query),tokens=q.split(' ').filter(Boolean);if(tokens.length&&tokens.every(t=>(' '+evidence+' ').includes(' '+t+' ')))result.query=proposed.query;}
- if(['relevance','newest','priceAsc','priceDesc','mileage','deals'].includes(proposed.sort)&&!intent.sort)result.sort=proposed.sort;
+ if(require('./filters.cjs').SORTS.includes(proposed.sort)&&!intent.sort)result.sort=proposed.sort;
  if(result.query&&!result.sort)result.sort='relevance';
  return validateFilters(result);
 }
-module.exports={userIntent,groundedFilters,explicitBounds,explicitMakes,explicitModels};
+function manualIntent(raw){
+ const f=validateFilters(raw),query=f.query||'';if(!query)return f;const bounds=explicitBounds(query);Object.assign(f,bounds);
+ if(/\bautomat(?:isk)?\b/i.test(query))f.gearbox='Automat';else if(/\bmanuell\b/i.test(query))f.gearbox='Manuell';
+ const fuels=['Bensin','Diesel','El','Laddhybrid','Hybrid','Etanol','Gas'].filter(fuel=>new RegExp('\\b'+fuel+'(?:bil|bilar)?\\b','i').test(query));if(fuels.length)f.fuelTypes=fuels;
+ const location=explicitLocation(query);if(location)f.location=location;
+ let lexical=query.replace(/\b(?:under|max|högst|upp till|mindre än|budget(?: på| är)?|för högst)\s+\d(?:[\d \u00a0\u202f]*\d)?(?:\s*(?:tusen|k)(?![a-z]))?\s*(?:kr|kronor|sek|mil|km)?/giu,' ').replace(/\b(?:från|tidigast|årsmodell(?: från)?|till|senast)\s+(?:19|20)\d{2}\b/gi,' ').replace(/\b(?:automat(?:isk)?|manuell)\b/gi,' ').replace(/\b(?:och|med|en|ett)\b/gi,' ').replace(/\s+/g,' ').trim();
+ if(location){const city=normalize(location.label);lexical=normalize(lexical).replace(new RegExp('(?:^| )(?:(?:i|nara|kring|runt|omkring|fran) )'+city+'(?: |$)'),' ').replace(/\binom \d+ (?:km|mil)\b/g,' ').trim();if(!f.sort&&/nära|närmast/i.test(query))f.sort='distance';}
+ f.query=lexical||undefined;return validateFilters(f);
+}
+module.exports={manualIntent,userIntent,groundedFilters,explicitBounds,explicitMakes,explicitModels};

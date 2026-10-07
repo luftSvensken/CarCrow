@@ -17,7 +17,7 @@ async function requestJSON(url, {headers={},body=null,maxBytes=20*1024*1024,time
   if(!addresses.length||addresses.some(x=>privateIP(x.address)))throw new Error('Lokala nätverksadresser stöds inte som datakälla.');
   const chosen=addresses.find(x=>x.family===4)||addresses[0];
   return new Promise((resolve,reject)=>{
-    const req=https.request(u,{method:body?'POST':'GET',headers:{'User-Agent':'CarCrow/0.5 (desktop-client)','Accept':kind==='html'?'text/html':'application/json',...headers},lookup:(_h,opts,cb)=>opts?.all?cb(null,[chosen]):cb(null,chosen.address,chosen.family)},res=>{
+    const req=https.request(u,{method:body?'POST':'GET',headers:{'User-Agent':'CarCrow/0.6 (desktop-client)','Accept':kind==='html'?'text/html':'application/json',...headers},lookup:(_h,opts,cb)=>opts?.all?cb(null,[chosen]):cb(null,chosen.address,chosen.family)},res=>{
       if([301,302,303,307,308].includes(res.statusCode)&&kind==='html'&&!body&&res.headers.location){
         res.resume();try{const next=new URL(res.headers.location,u);if(next.origin!==u.origin||redirects>=3)throw new Error('Källans omdirigering stöds inte.');resolve(requestJSON(next.href,{headers,body,maxBytes,timeout,kind,signal,redirects:redirects+1}));}catch(e){reject(e);}return;
       }
@@ -33,15 +33,8 @@ async function requestJSON(url, {headers={},body=null,maxBytes=20*1024*1024,time
     if(body)req.write(JSON.stringify(body));req.end();
   });
 }
-const nullableInt={type:['integer','null'],minimum:0};
-const FILTER_SCHEMA={type:'object',additionalProperties:false,properties:{
-  makes:{type:'array',items:{type:'string'}},models:{type:'array',items:{type:'string'}},
-  minPrice:nullableInt,maxPrice:nullableInt,minYear:nullableInt,maxYear:nullableInt,maxMileage:nullableInt,
-  fuelTypes:{type:'array',items:{type:'string',enum:['Bensin','Diesel','El','Laddhybrid','Hybrid','Etanol','Gas']}},
-  gearbox:{type:['string','null'],enum:['Automat','Manuell',null]},query:{type:['string','null']},
-  sort:{type:'string',enum:['relevance','newest','priceAsc','priceDesc','mileage','deals']}
-},required:['makes','models','minPrice','maxPrice','minYear','maxYear','maxMileage','fuelTypes','gearbox','query','sort']};
+const {FILTER_SCHEMA}=require('./filters.cjs');
 function describeFilters(f) {
-  return [f.makes?.join(' eller '),f.models?.join(' eller '),f.maxPrice!=null?`högst ${f.maxPrice.toLocaleString('sv-SE')} kr`:null,f.minPrice!=null?`minst ${f.minPrice.toLocaleString('sv-SE')} kr`:null,f.gearbox,f.maxMileage!=null?`max ${f.maxMileage.toLocaleString('sv-SE')} mil`:null,f.fuelTypes?.join(' eller '),f.minYear?`från ${f.minYear}`:null,f.maxYear?`till ${f.maxYear}`:null,f.query].filter(Boolean).join(' · ')||'Alla insamlade bilar';
+  return [f.makes?.join(' eller '),f.models?.join(' eller '),f.maxPrice!=null?`högst ${f.maxPrice.toLocaleString('sv-SE')} kr`:null,f.minPrice!=null?`minst ${f.minPrice.toLocaleString('sv-SE')} kr`:null,f.gearbox,f.maxMileage!=null?`max ${f.maxMileage.toLocaleString('sv-SE')} mil`:null,f.fuelTypes?.join(' eller '),f.minYear?`från ${f.minYear}`:null,f.maxYear?`till ${f.maxYear}`:null,f.location?`utgår från ${f.location.label}${f.location.radiusKm?' inom '+f.location.radiusKm+' km':''}`:null,f.bodyTypes?.join(', '),f.sellerType==='dealer'?'Bilhandlare':f.sellerType==='private'?'Privatperson':null,f.query].filter(Boolean).join(' · ')||'Alla insamlade bilar';
 }
 module.exports={requestJSON,describeFilters,privateIP,FILTER_SCHEMA};
