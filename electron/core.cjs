@@ -2,10 +2,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const initSqlJs = require('sql.js');
+const {normalize:searchNormalize,indexAd,querySQL,modelSQL}=require('./search-query.cjs');
+const {saleIssue}=require('./sale-quality.cjs');
 
 const FUELS = ['Bensin', 'Diesel', 'El', 'Laddhybrid', 'Hybrid', 'Etanol', 'Gas'];
 const GEARS = ['Automat', 'Manuell'];
-const SORTS = ['newest', 'priceAsc', 'priceDesc', 'mileage', 'deals'];
+const SORTS = ['relevance', 'newest', 'priceAsc', 'priceDesc', 'mileage', 'deals'];
 const numKeys = { minPrice:[0,100000000], maxPrice:[0,100000000], minYear:[1900,2100], maxYear:[1900,2100], maxMileage:[0,1000000] };
 function cleanString(v, max=200) { if(typeof v !== 'string') throw new Error('Textfält har fel format.'); return v.trim().slice(0,max); }
 function httpsURL(v) { const u = new URL(v); if(u.protocol !== 'https:' || u.username || u.password) throw new Error('Endast HTTPS-adresser utan inloggning stöds.'); return u.href; }
@@ -29,6 +31,7 @@ function normalizeListing(raw,source) {
   if(!raw||typeof raw!=='object'||Array.isArray(raw)) throw new Error('Ogiltig annons.');
   const required=['id','make','model','title','price','year','mileage','fuel','gearbox','url'];
   for(const k of required) if(raw[k]===undefined || raw[k]===null) throw new Error('Annons saknar '+k);
+  const issue=saleIssue(raw);if(issue)throw new Error(issue);
   const result={};
   for(const k of ['id','make','model','title']) { result[k]=cleanString(String(raw[k]),k==='title'?240:100); if(!result[k]) throw new Error('Tomt fält: '+k); }
   for(const [k,lo,hi] of [['price',1,100000000],['year',1900,2100],['mileage',0,1000000]]) {
@@ -81,6 +84,8 @@ class Store {
         data TEXT NOT NULL,hash TEXT NOT NULL,active INTEGER NOT NULL,demo INTEGER NOT NULL,first_seen TEXT,last_seen TEXT,published TEXT);
       CREATE INDEX IF NOT EXISTS listing_search ON listings(demo,active,make,model,price,year,mileage);
       CREATE INDEX IF NOT EXISTS listing_vehicle ON listings(vehicle_id);
+      CREATE TABLE IF NOT EXISTS listing_search_text(id TEXT PRIMARY KEY REFERENCES listings(id) ON DELETE CASCADE,
+        make TEXT NOT NULL,model TEXT NOT NULL,title TEXT NOT NULL,variant TEXT NOT NULL,full TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT,listing_id TEXT,kind TEXT,at TEXT,old_price INTEGER,new_price INTEGER);
       CREATE TABLE IF NOT EXISTS bookmarks(vehicle_id TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS bookmark_archive(vehicle_id TEXT PRIMARY KEY,removed_at TEXT NOT NULL,expires_at TEXT NOT NULL);
@@ -89,11 +94,16 @@ class Store {
       CREATE TABLE IF NOT EXISTS watch_results(watch_id TEXT PRIMARY KEY,vehicle_ids TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS watch_checks(watch_id TEXT PRIMARY KEY,checked_at TEXT,error TEXT);
       CREATE TABLE IF NOT EXISTS watches(id TEXT PRIMARY KEY,name TEXT,filters TEXT,demo INTEGER,created TEXT,seen TEXT);`);
+    // Migrate old caches once; chats, saved cars and source history keep their IDs.
+    const missing=store.rows('SELECT id,data FROM listings WHERE id NOT IN (SELECT id FROM listing_search_text)');
+    if(missing.length){store.db.run('BEGIN');try{for(const row of missing)store.indexListing(row.id,JSON.parse(row.data));store.db.run('COMMIT');}catch(e){store.db.run('ROLLBACK');throw e;}}
+    if(!store.setting('cashSaleCleanup05')){store.db.run('BEGIN');try{for(const row of store.rows('SELECT id,data FROM listings WHERE active=1'))if(saleIssue(JSON.parse(row.data)))store.db.run('UPDATE listings SET active=0 WHERE id=?',[row.id]);store.db.run('COMMIT');}catch(e){store.db.run('ROLLBACK');throw e;}store.setSetting('cashSaleCleanup05',true);}
     store.salt=store.setting('identitySalt')||crypto.randomBytes(32).toString('hex');
     store.setSetting('identitySalt',store.salt); return store;
   }
   rows(sql,args=[]) {if(this.sqlite)return this.sqlite.prepare(sql).all(...args).map(r=>({...r}));const stmt=this.db.prepare(sql);try{stmt.bind(args);const rows=[];while(stmt.step())rows.push(stmt.getAsObject());return rows;}finally{stmt.free();} }
   save() { if(!this.file||this.sqlite)return;fs.mkdirSync(path.dirname(this.file),{recursive:true});const tmp=this.file+'.tmp';fs.writeFileSync(tmp,Buffer.from(this.db.export()),{mode:0o600});fs.renameSync(tmp,this.file); }
+  indexListing(id,ad){this.db.run('INSERT OR REPLACE INTO listing_search_text VALUES (?,?,?,?,?,?)',[id,...indexAd(ad)]);}
   setting(k) { const r=this.rows('SELECT value FROM settings WHERE key=?',[k])[0];return r?JSON.parse(r.value):null; }
   setSetting(k,v) { this.db.run('INSERT OR REPLACE INTO settings VALUES (?,?)',[k,JSON.stringify(v)]);this.save(); }
   sources() { return this.rows('SELECT * FROM sources').map(s=>({...JSON.parse(s.config),lastSync:s.last_sync,error:s.error})); }
@@ -138,6 +148,7 @@ class Store {
           fuel=excluded.fuel,gearbox=excluded.gearbox,variant=excluded.variant,body_type=excluded.body_type,data=excluded.data,hash=excluded.hash,
           active=1,last_seen=excluded.last_seen,published=excluded.published`,
           [listingId,source.id,vehicleId,ad.make,ad.model,ad.price,ad.year,ad.mileage,ad.fuel,ad.gearbox,ad.comparisonVariant||ad.variant,ad.bodyType,JSON.stringify(ad),hash,1,source.demo?1:0,old?.first_seen||now,now,old?.published||ad.publishedAt]);
+        this.indexListing(listingId,ad);
       }
       if(payload.complete)for(const old of this.rows('SELECT id,data,price FROM listings WHERE source_id=? AND active=1',[source.id])) {
         if(!ids.has(JSON.parse(old.data).id)) {this.db.run('UPDATE listings SET active=0,last_seen=? WHERE id=?',[now,old.id]);this.db.run('INSERT INTO events(listing_id,kind,at,old_price,new_price) VALUES (?,?,?,?,NULL)',[old.id,'removed',now,old.price]);count.removed++;}
@@ -146,22 +157,36 @@ class Store {
     }catch(e){this.db.run('ROLLBACK');throw e;}
   }
   // All query fragments originate here; user text and model output are parameters only.
-  search(raw={},demo=false,page=0,onlySaved=false,selectedIds=null,watchOnly=false,excludeIds=[]) {
+  search(raw={},demo=false,page=0,onlySaved=false,selectedIds=null,watchOnly=false,excludeIds=[],sourceQueryIds=[]) {
     if(!Number.isInteger(page)||page<0||page>Number.MAX_SAFE_INTEGER/48)throw new Error('Ogiltig resultatsida.');
     const f=validateFilters(raw);const params=[demo?1:0];const where=[];
-    for(const [k,col] of [['makes','make'],['models','model'],['fuelTypes','fuel']])if(f[k]?.length){where.push(`${col} COLLATE NOCASE IN (${f[k].map(()=>'?').join(',')})`);params.push(...f[k]);}
+    if(f.makes?.length){where.push(`sx.make IN (${f.makes.map(()=>'?').join(',')})`);params.push(...f.makes.map(x=>' '+searchNormalize(x)+' '));}
+    if(f.models?.length){const model=modelSQL(f.models);where.push(model.sql);params.push(...model.params);}
+    if(f.fuelTypes?.length){where.push(`l.fuel IN (${f.fuelTypes.map(()=>'?').join(',')})`);params.push(...f.fuelTypes);}
     for(const [k,col,op] of [['minPrice','price','>='],['maxPrice','price','<='],['minYear','year','>='],['maxYear','year','<='],['maxMileage','mileage','<=']])if(f[k]!==undefined){where.push(`${col}${op}?`);params.push(f[k]);}
     if(f.gearbox){where.push('gearbox=?');params.push(f.gearbox);}
-    if(f.query){where.push("(make||' '||model||' '||data) LIKE ? ESCAPE '\\'");params.push('%'+f.query.replace(/[\\%_]/g,'\\$&')+'%');}
+    const lexical=querySQL(f.query||'');
+    if(!Array.isArray(sourceQueryIds)||sourceQueryIds.some(id=>typeof id!=='string'||id.length>100))throw new Error('Ogiltigt källurval.');
+    if(f.query){
+      // The source's search index can contain original text omitted from its
+      // summary API. Keep source-confirmed text hits within this live session;
+      // all structured requirements still apply and unrelated cache ads cannot.
+      const verified=selectedIds&&sourceQueryIds.length;
+      where.push(verified?'('+lexical.match+' OR vehicle_id IN (SELECT value FROM json_each(?)))':lexical.match);params.push(...lexical.params);if(verified)params.push(JSON.stringify(sourceQueryIds));
+    }
     if(!Array.isArray(excludeIds)||excludeIds.some(id=>typeof id!=='string'||id.length>100))throw new Error('Ogiltiga bil-ID.');
     if(excludeIds.length){where.push('vehicle_id NOT IN (SELECT value FROM json_each(?))');params.push(JSON.stringify(excludeIds));}
     if(onlySaved)where.push('vehicle_id IN (SELECT vehicle_id FROM bookmarks)');
     if(selectedIds){if(!selectedIds.length)return {items:[],total:0,page};if(!Array.isArray(selectedIds)||selectedIds.some(x=>typeof x!=='string'||x.length>100))throw new Error('Ogiltigt bilurval.');where.push('vehicle_id IN (SELECT value FROM json_each(?))');params.push(JSON.stringify(selectedIds));}
-    const base=`WITH ranked AS (SELECT *,ROW_NUMBER() OVER(PARTITION BY vehicle_id ORDER BY price,id) rn FROM listings WHERE active=1 AND demo=?) SELECT * FROM ranked WHERE rn=1${where.length?' AND '+where.join(' AND '):''}`;
-    const total=this.rows('SELECT COUNT(*) n FROM ('+base+')',params)[0].n;
-    const order={newest:'published DESC',priceAsc:'price ASC',priceDesc:'price DESC',mileage:'mileage ASC',deals:'price ASC'}[f.sort||'newest'];
-    if(watchOnly&&f.sort!=='deals')return {ids:this.rows('SELECT vehicle_id FROM ('+base+')',params).map(x=>x.vehicle_id),total};
-    let rows=this.rows(base+' ORDER BY '+order+(f.sort==='deals'?'':' LIMIT 48 OFFSET ?'),f.sort==='deals'?params:[...params,page*48]);
+    // Match before deduplication: another offer may contain the requested trim.
+    // Ranking remains deterministic while later pages arrive.
+    const candidates=`SELECT l.*,(${lexical.score}) relevance FROM listings l JOIN listing_search_text sx ON sx.id=l.id WHERE active=1 AND demo=?${where.length?' AND '+where.join(' AND '):''}`;
+    const base=`WITH candidates AS (${candidates}),ranked AS (SELECT *,ROW_NUMBER() OVER(PARTITION BY vehicle_id ORDER BY relevance DESC,price,id) rn FROM candidates) SELECT * FROM ranked WHERE rn=1`;
+    const queryParams=[...lexical.scoreParams,...params];
+    const total=this.rows('SELECT COUNT(*) n FROM ('+base+')',queryParams)[0].n;
+    const order={relevance:'relevance DESC,published DESC,vehicle_id',newest:'published DESC,vehicle_id',priceAsc:'price ASC,vehicle_id',priceDesc:'price DESC,vehicle_id',mileage:'mileage ASC,vehicle_id',deals:'price ASC'}[f.sort||(f.query?'relevance':'newest')];
+    if(watchOnly&&f.sort!=='deals')return {ids:this.rows('SELECT vehicle_id FROM ('+base+')',queryParams).map(x=>x.vehicle_id),total};
+    let rows=this.rows(base+' ORDER BY '+order+(f.sort==='deals'?'':' LIMIT 48 OFFSET ?'),f.sort==='deals'?queryParams:[...queryParams,page*48]);
     if(f.sort==='deals'){
       const universe=this.rows('WITH ranked AS (SELECT *,ROW_NUMBER() OVER(PARTITION BY vehicle_id ORDER BY price,id) rn FROM listings WHERE active=1 AND demo=?) SELECT * FROM ranked WHERE rn=1',[demo?1:0]);
       const cohorts=new Map(),group=r=>JSON.stringify([r.make.toLowerCase(),r.model.toLowerCase(),r.fuel,r.gearbox,r.variant.toLowerCase(),r.body_type.toLowerCase()]);
@@ -220,11 +245,11 @@ class Store {
   excludeListing(id) {this.db.run('UPDATE listings SET active=0 WHERE id=?',[id]);this.save();}
   removeListing(id) {const row=this.rows('SELECT * FROM listings WHERE id=? AND active=1',[id])[0];if(!row)return;const now=new Date().toISOString();this.db.run('UPDATE listings SET active=0,last_seen=? WHERE id=?',[now,id]);this.db.run('INSERT INTO events(listing_id,kind,at,old_price,new_price) VALUES (?,?,?,?,NULL)',[id,'removed',now,row.price]);this.save();}
   facets(demo=false) {const rows=this.rows('SELECT DISTINCT make,model FROM listings WHERE active=1 AND demo=? ORDER BY make,model',[demo?1:0]);return {makes:[...new Set(rows.map(x=>x.make))],models:rows,fuels:FUELS};}
-  stats(demo=false) {return {...this.rows('SELECT COUNT(*) listings,COUNT(DISTINCT vehicle_id) vehicles,MAX(last_seen) updated FROM listings WHERE active=1 AND demo=?',[demo?1:0])[0],sources:this.sources().filter(s=>!s.demo).map(s=>({id:s.id,name:s.name,enabled:s.enabled,lastSync:s.lastSync,error:s.error})),aiConfigured:!!this.setting('apiKey'),model:'openrouter/free'};}
-  watches(demo=false) {return this.rows('SELECT * FROM watches WHERE demo=? ORDER BY created DESC',[demo?1:0]).map(w=>{const filters=JSON.parse(w.filters);const current=this.rows('SELECT vehicle_ids FROM watch_results WHERE watch_id=?',[w.id])[0];const result=this.search(filters,demo,0,false,current?JSON.parse(current.vehicle_ids):null,true);const seen=new Set(JSON.parse(w.seen));const checked=this.rows('SELECT checked_at,error FROM watch_checks WHERE watch_id=?',[w.id])[0];const picks=this.rows('SELECT data FROM watch_recommendations WHERE watch_id=?',[w.id])[0];const ranking=picks?JSON.parse(picks.data):[];const valid=new Map(this.search(filters,demo,0,false,ranking.map(c=>c.id)).items.map(c=>[c.id,c]));const items=ranking.flatMap(c=>valid.has(c.id)?[{...valid.get(c.id),recommendation:c.recommendation}]:[]);return {id:w.id,name:w.name,filters,items,total:result.total,newCount:result.ids.filter(id=>!seen.has(id)).length,checkedAt:checked?.checked_at||null,error:checked?.error||null};});}
+  stats(demo=false) {return {...this.rows('SELECT COUNT(*) listings,COUNT(DISTINCT vehicle_id) vehicles,MAX(last_seen) updated FROM listings WHERE active=1 AND demo=?',[demo?1:0])[0],sources:this.sources().filter(s=>!s.demo).map(s=>({id:s.id,name:s.name,enabled:s.enabled,lastSync:s.lastSync,error:s.error})),aiConfigured:!!this.setting('apiKey'),model:require('./ai-config.json').model};}
+  watches(demo=false) {return this.rows('SELECT * FROM watches WHERE demo=? ORDER BY created DESC',[demo?1:0]).map(w=>{const filters=JSON.parse(w.filters);const current=this.rows('SELECT vehicle_ids FROM watch_results WHERE watch_id=?',[w.id])[0];const ids=current?JSON.parse(current.vehicle_ids):null;const result=this.search(filters,demo,0,false,ids,true,[],ids||[]);const seen=new Set(JSON.parse(w.seen));const checked=this.rows('SELECT checked_at,error FROM watch_checks WHERE watch_id=?',[w.id])[0];const picks=this.rows('SELECT data FROM watch_recommendations WHERE watch_id=?',[w.id])[0];const ranking=picks?JSON.parse(picks.data):[];const valid=new Map(this.search(filters,demo,0,false,ranking.map(c=>c.id),false,[],ids||[]).items.map(c=>[c.id,c]));const items=ranking.flatMap(c=>valid.has(c.id)?[{...valid.get(c.id),recommendation:c.recommendation}]:[]);return {id:w.id,name:w.name,filters,items,total:result.total,newCount:result.ids.filter(id=>!seen.has(id)).length,checkedAt:checked?.checked_at||null,error:checked?.error||null};});}
   addWatch(name,filters,demo=false) {filters=validateFilters(filters);const seen=this.search(filters,demo,0,false,null,true).ids;this.db.run('INSERT INTO watches VALUES (?,?,?,?,?,?)',[crypto.randomUUID(),cleanString(name,100)||'Min sökning',JSON.stringify(filters),demo?1:0,new Date().toISOString(),JSON.stringify(seen)]);this.save();}
   removeWatch(id) {this.db.run('DELETE FROM watches WHERE id=?',[id]);this.db.run('DELETE FROM watch_checks WHERE watch_id=?',[id]);this.db.run('DELETE FROM watch_results WHERE watch_id=?',[id]);this.db.run('DELETE FROM watch_recommendations WHERE watch_id=?',[id]);this.save();}
-  markWatch(id) {const w=this.rows('SELECT * FROM watches WHERE id=?',[id])[0];if(w){this.db.run('UPDATE watches SET seen=? WHERE id=?',[JSON.stringify(this.search(JSON.parse(w.filters),!!w.demo,0,false,null,true).ids),id]);this.save();}}
+  markWatch(id) {const w=this.rows('SELECT * FROM watches WHERE id=?',[id])[0];if(w){const current=this.rows('SELECT vehicle_ids FROM watch_results WHERE watch_id=?',[id])[0];const ids=current?JSON.parse(current.vehicle_ids):null;this.db.run('UPDATE watches SET seen=? WHERE id=?',[JSON.stringify(this.search(JSON.parse(w.filters),!!w.demo,0,false,ids,true,[],ids||[]).ids),id]);this.save();}}
   purgeExpired() {
     this.purgeArchive();
     const now=Date.now();for(const s of this.sources().filter(s=>!s.demo)) {

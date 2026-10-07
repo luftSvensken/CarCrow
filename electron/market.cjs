@@ -6,6 +6,13 @@ const {buildURL,parseCar}=require('./blocket.cjs');
 const {listURL,listLinks,parseDetail}=require('./html-sources.cjs');
 const {cancelled}=require('./stream.cjs');
 const {riddermarkPage,riddermarkDetail,riddermarkURL,kvdPage,kvdURL}=require('./dealer-sources.cjs');
+const {correctQuery,terms}=require('./search-query.cjs');
+function sourceGroups(f,adapter){
+ const queries=f.query?correctQuery(f.query).split(/\s+(?:eller|or)\s+/):[null];
+ const models=f.models?.length?f.models:[null];
+ const makes=adapter==='blocket-public'?[f.makes||[]]:(f.makes?.length?f.makes:[null]).map(make=>make?[make]:[]);
+ return makes.flatMap(m=>models.flatMap(model=>queries.map(query=>({...f,makes:m,models:model?[model]:[],query:query||undefined}))));
+}
 function scopeKey(filters){const f=validateFilters(filters);return 'market:'+crypto.createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.entries(f).sort(([a],[b])=>a.localeCompare(b))))).digest('hex');}
 function nextHTMLPage(html,id,url){
   const $=cheerio.load(html),current=new URL(url),page=Number(current.searchParams.get(id==='bytbil'?'Page':'page')||1);
@@ -32,16 +39,16 @@ class Market {
     if(signal?.aborted)throw cancelled();const f=validateFilters(filters),key=scopeKey(f),jobKey=key+':'+(session?.id||'')+':'+(fresh?'fresh':'crawl')+':'+(onlySources||[]).join(',');
     let job=this.jobs.get(jobKey);
     if(!job){
-      job={controller:new AbortController(),listeners:new Set(),batches:new Set(),ids:new Set(),subscribers:0};this.jobs.set(jobKey,job);
-      job.promise=Promise.resolve().then(()=>this.fetchPage(f,{signal:job.controller.signal,onProgress:e=>{for(const listener of job.listeners)listener(e);},onBatch:ids=>{for(const id of ids){job.ids.add(id);session?.ids.add(id);}for(const listener of job.batches)listener();},sources:onlySources,fresh,session})).finally(()=>this.jobs.delete(jobKey));
+      job={controller:new AbortController(),listeners:new Set(),batches:new Set(),ids:new Set(),queryIds:new Set(),subscribers:0};this.jobs.set(jobKey,job);
+      job.promise=Promise.resolve().then(()=>this.fetchPage(f,{signal:job.controller.signal,onProgress:e=>{for(const listener of job.listeners)listener(e);},onBatch:(ids,queryConfirmed=false)=>{for(const id of ids){job.ids.add(id);session?.ids.add(id);if(queryConfirmed){job.queryIds.add(id);session?.queryIds.add(id);}}for(const listener of job.batches)listener();},sources:onlySources,fresh,session})).finally(()=>this.jobs.delete(jobKey));
     }
     job.subscribers++;job.listeners.add(onProgress);
-    let timer=null;const publish=()=>{timer=null;if(signal?.aborted)return;const partial=this.store.search(f,false,0,false,session?[...session.ids]:[...job.ids],false,excludeIds);if(partial.items.length)onResults({...partial,filters:f,sessionId:session?.id,hasMore:true,remaining:Math.max(0,partial.total-partial.items.length)});};
+    let timer=null;const publish=()=>{timer=null;if(signal?.aborted)return;const partial=this.store.search(f,false,0,false,session?[...session.ids]:[...job.ids],false,excludeIds,session?[...session.queryIds]:[...job.queryIds]);if(partial.items.length)onResults({...partial,filters:f,sessionId:session?.id,hasMore:true,searchComplete:false,remaining:Math.max(0,partial.total-partial.items.length)});};
     const batch=()=>{if(!timer)timer=setTimeout(publish,80);};job.batches.add(batch);
     return new Promise((resolve,reject)=>{
       let settled=false;const cleanup=()=>{clearTimeout(timer);job.batches.delete(batch);job.listeners.delete(onProgress);job.subscribers--;signal?.removeEventListener('abort',abort);};
       const abort=()=>{if(settled)return;settled=true;cleanup();if(!job.subscribers)job.controller.abort();reject(cancelled());};signal?.addEventListener('abort',abort,{once:true});
-      job.promise.then(result=>{if(settled)return;settled=true;cleanup();if(session)for(const id of result.vehicleIds||[])session.ids.add(id);const selected=session?[...session.ids]:null;const unseen=this.store.search(f,false,0,false,selected,false,excludeIds);resolve({...result,...unseen,total:this.store.search(f,false,0,false,selected).total,remaining:Math.max(0,unseen.total-unseen.items.length),filters:f,sessionId:session?.id});},e=>{if(settled)return;settled=true;cleanup();reject(e);});
+      job.promise.then(result=>{if(settled)return;settled=true;cleanup();if(session)for(const id of result.vehicleIds||[])session.ids.add(id);const selected=session?[...session.ids]:null,queryIds=session?[...session.queryIds]:[...job.queryIds];const unseen=this.store.search(f,false,0,false,selected,false,excludeIds,queryIds);const complete={...result,...unseen,total:this.store.search(f,false,0,false,selected,false,[],queryIds).total,remaining:Math.max(0,unseen.total-unseen.items.length),filters:f,sessionId:session?.id};onResults({...complete,searchComplete:false});resolve(complete);},e=>{if(settled)return;settled=true;cleanup();reject(e);});
       if(signal?.aborted)abort();
     });
   }
@@ -49,26 +56,30 @@ class Market {
     const key=scopeKey(f),state=session?.state||(fresh?{sources:{}}:this.coverage(f)),sources=this.store.sources().filter(s=>s.enabled&&s.adapter&&(!onlySources||onlySources.includes(s.id)));
     const imported=(source,ads)=>this.store.rows('SELECT DISTINCT vehicle_id FROM listings WHERE id IN (SELECT value FROM json_each(?))',[JSON.stringify(ads.map(ad=>source.id+':'+ad.id))]).map(r=>r.vehicle_id);
     const settled=await Promise.allSettled(sources.map(async source=>{
-      const groups=f.makes?.length?f.makes:[null];let cursor=state.sources[source.id]||{page:1,group:0,done:false,received:0,pages:0};
-      if(cursor.done)return {source:source.name,done:true,received:0};
+      const groups=sourceGroups(f,source.adapter),previous=state.sources[source.id]||{group:0,groups:{},done:false};
+      if(previous.done)return {source:source.name,done:true,received:0};
+      if(previous.error)return {source:source.name,error:previous.error,done:false};
+      const group=Array.from({length:groups.length},(_,i)=>(previous.group+i)%groups.length).find(i=>!previous.groups?.[i]?.done);
+      const cursor=previous.groups?.[group]||{page:1,done:false,received:0,pages:0};
+      const scoped=groups[group]||f,make=scoped.makes?.[0]||null;
       try{
         if(signal.aborted)throw cancelled();this.store.checkSource(source);
         onProgress({type:'source',source:source.name,status:'running',label:'Söker på '+source.name,page:cursor.page});
         let ads=[],nextURL=null,total=null,signature,limited=false;
         if(source.adapter==='blocket-public'){
-          const r=await this.request(buildURL(f,cursor.page),{signal});if(!Array.isArray(r.docs))throw new Error('Källans sökformat har ändrats.');
-          for(const d of r.docs)if(d.sales_form!=null&&d.sales_form!==1||/(?:vi köper|köpes|köper din|privatleasing)/i.test(d.heading+' '+(d.model_specification||'')))this.store.excludeListing(source.id+':'+d.id);
+          const r=await this.request(buildURL(scoped,cursor.page),{signal});if(!Array.isArray(r.docs))throw new Error('Källans sökformat har ändrats.');
+          for(const d of r.docs)if(d.price?.amount<=100||d.sales_form!=null&&d.sales_form!==1||/(?:vi köper|köpes|köper din|privatleasing)/i.test(d.heading+' '+(d.model_specification||'')))this.store.excludeListing(source.id+':'+d.id);
           total=r.metadata?.result_size?.match_count??r.total??null;signature=r.docs.map(d=>String(d.id)).join(',');ads=r.docs.map(parseCar).filter(Boolean);
           const last=r.metadata?.paging?.last||Infinity,end=!r.docs.length||r.metadata?.is_end_of_paging||cursor.page>=last;
-          limited=Number.isFinite(last)&&total>last*r.docs.length;nextURL=end?null:buildURL(f,cursor.page+1);
+          limited=Number.isFinite(last)&&total>last*r.docs.length;nextURL=end?null:buildURL(scoped,cursor.page+1);
           // Preserve previously inspected descriptions when the search API omits them.
           ads=ads.map(ad=>{const old=this.store.rows('SELECT data FROM listings WHERE id=?',[source.id+':'+ad.id])[0];return old?{...JSON.parse(old.data),...ad,description:ad.description||JSON.parse(old.data).description}:ad;});
         }else if(source.adapter==='kvd-public'){
-          const parsed=kvdPage(await this.request(kvdURL(f,cursor.page,groups[cursor.group]),{signal}));ads=parsed.listings;total=parsed.total;signature=ads.map(x=>x.id).join(',');nextURL=parsed.count>=20?kvdURL(f,cursor.page+1,groups[cursor.group]):null;
+          const parsed=kvdPage(await this.request(kvdURL(scoped,cursor.page,make),{signal}));ads=parsed.listings;total=parsed.total;signature=ads.map(x=>x.id).join(',');nextURL=parsed.count>=20&&(!Number.isFinite(total)||cursor.page*20<total)?kvdURL(scoped,cursor.page+1,make):null;
         }else if(source.adapter==='riddermark-public'){
-          const url=riddermarkURL(f,cursor.page,groups[cursor.group]),html=await this.request(url,{kind:'html',signal});const parsed=riddermarkPage(html);ads=parsed.listings;signature=ads.map(x=>x.id).join(',');nextURL=parsed.count>=39?riddermarkURL(f,cursor.page+1,groups[cursor.group]):null;
+          const url=riddermarkURL(scoped,cursor.page,make),html=await this.request(url,{kind:'html',signal});const parsed=riddermarkPage(html);ads=parsed.listings;signature=ads.map(x=>x.id).join(',');nextURL=parsed.count>=39?riddermarkURL(scoped,cursor.page+1,make):null;
         }else{
-          const url=cursor.nextURL||listURL(source.id,f,groups[cursor.group]);const html=await this.request(url,{kind:'html',signal});const links=listLinks(html,source.id);signature=links.join(',');
+          const url=cursor.nextURL||listURL(source.id,scoped,make);const html=await this.request(url,{kind:'html',signal});const links=listLinks(html,source.id);signature=links.join(',');
           if(!links.length&&!/(?:0\s+(?:Personbilar|bilar|träffar|resultat|annonser)|Inga fordon matchade sökningen)/i.test(html))throw new Error('Annonslistan kunde inte läsas.');
           nextURL=nextHTMLPage(html,source.id,url);if(source.id==='bilweb')total=Number(cheerio.load(html)('#page-data').attr('data-total'))||null;
           let index=0,completed=0;const failures=[];
@@ -85,15 +96,18 @@ class Market {
         }
         if(signal.aborted)throw cancelled();if(signature&&signature===cursor.signature)nextURL=null;
         const valid=ads.filter(ad=>{try{normalizeListing(ad,source);return true;}catch{return false;}});
-        if(['blocket-public','riddermark-public','kvd-public'].includes(source.adapter)){this.store.importSnapshot(source,{schemaVersion:1,complete:false,listings:valid});onBatch(imported(source,valid));}
-        let next={...cursor,page:cursor.page+1,nextURL,signature,total:total??cursor.total,pages:cursor.pages+1,received:cursor.received+valid.length,error:null,limited,done:!nextURL};
-        if(source.adapter!=='blocket-public'&&!nextURL&&cursor.group<groups.length-1)next={...next,group:cursor.group+1,page:1,nextURL:null,signature:null,done:false};
+        if(['blocket-public','riddermark-public','kvd-public'].includes(source.adapter)){this.store.importSnapshot(source,{schemaVersion:1,complete:false,listings:valid});onBatch(imported(source,valid),source.adapter==='blocket-public'&&terms(f.query||'').length>0);}
+        const groupNext={...cursor,page:cursor.page+1,nextURL,signature,total:total??cursor.total,pages:cursor.pages+1,received:cursor.received+valid.length,error:null,limited,done:!nextURL};
+        const cursors={...(previous.groups||{}),[group]:groupNext};
+        const next={...groupNext,group:(group+1)%groups.length,groups:cursors,
+          pages:Object.values(cursors).reduce((n,c)=>n+c.pages,0),received:Object.values(cursors).reduce((n,c)=>n+c.received,0),
+          done:groups.every((_,i)=>cursors[i]?.done),total:groups.every((_,i)=>Number.isFinite(cursors[i]?.total))?Object.values(cursors).reduce((n,c)=>n+c.total,0):null};
         state.sources[source.id]=next;if(!fresh&&!session)this.store.setSetting(key,state);this.store.sourceStatus(source.id,null,true);
         onProgress({type:'source',source:source.name,status:'done',label:source.name+' · '+valid.length+' annonser',received:valid.length,page:cursor.page});
         const listingIds=valid.map(ad=>source.id+':'+ad.id);
         const vehicleIds=this.store.rows('SELECT DISTINCT vehicle_id FROM listings WHERE id IN (SELECT value FROM json_each(?))',[JSON.stringify(listingIds)]).map(row=>row.vehicle_id);
         return {source:source.name,received:valid.length,done:next.done,total:next.total||null,limited,vehicleIds};
-      }catch(e){if(e.name==='AbortError')throw e;this.store.sourceStatus(source.id,e.message);state.sources[source.id]={...cursor,error:e.message};if(!fresh&&!session)this.store.setSetting(key,state);onProgress({type:'source',source:source.name,status:'error',label:source.name+' kunde inte hämtas',error:e.message});return {source:source.name,error:e.message,done:false};}
+      }catch(e){if(e.name==='AbortError')throw e;this.store.sourceStatus(source.id,e.message);state.sources[source.id]={...previous,error:e.message};if(!fresh&&!session)this.store.setSetting(key,state);onProgress({type:'source',source:source.name,status:'error',label:source.name+' kunde inte hämtas',error:e.message});return {source:source.name,error:e.message,done:false};}
     }));
     if(!fresh&&!session)this.store.setSetting(key,state);
     if(signal.aborted)throw cancelled();const rejected=settled.find(x=>x.status==='rejected');if(rejected)throw rejected.reason;
@@ -121,4 +135,4 @@ class Market {
     return {...this.store.detail(id),checks};
   }
 }
-module.exports={Market,nextHTMLPage,scopeKey};
+module.exports={Market,nextHTMLPage,scopeKey,sourceGroups};

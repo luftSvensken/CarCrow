@@ -1,4 +1,4 @@
 {
   "endpoint": "https://carcrow-ai.vea1se.workers.dev/v1/chat/completions",
-  "model": "openrouter/free"
+  "model": "nvidia/nemotron-3-super-120b-a12b:free"
 }

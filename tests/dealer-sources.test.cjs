@@ -12,13 +12,13 @@ test('Riddermark skips sold and unpriced cars and preserves declared units',()=>
  const html='<script id="__NEXT_DATA__">'+JSON.stringify({props:{pageProps:{carsJson:[car,{...car,id:2,isSold:true},{...car,id:3,isBeingPriced:true}]}}})+'</script><a href="/kopa-bil/bmw/abc123/">Bil</a>';
  const result=riddermarkPage(html);assert.equal(result.listings.length,1);assert.equal(result.listings[0].mileage,9000);assert.equal(result.listings[0].price,180000);
 });
-test('fresh sessions skip nonmatching pages and repeated agent searches reach different cars',async()=>{
+test('fresh sessions fill the matching page and continued AI searches retain earlier cars',async()=>{
  const s=await Store.create();s.setSource({id:'kvd',name:'Kvdbil',hosts:['www.kvd.se'],enabled:true,mediaAllowed:true,adapter:'kvd-public'});const pages=[];
  const market=new Market(s,{request:async url=>{const offset=Number(new URL(url).searchParams.get('offset'));pages.push(offset);const ads=Array.from({length:20},(_,i)=>({...auction,id:String(offset+i),auctionUrl:'https://www.kvd.se/fast-pris/audi-a3-'+(offset+i),buyNowAmount:offset===0?200000:120000,processObject:{properties:{...auction.processObject.properties,registrationPlate:null}}}));return {auctions:ads,hits:80};}});
  const sessions=new SearchSessions(s,market),agent=new CarAgent({store:s,market,sessions,key:()=>'',emit:()=>{}}),chat={filters:{},cars:[]},options={signal:new AbortController().signal,emit:()=>{},activity:()=>({})};
- const first=await agent.execute('search_market',{filters:{maxPrice:150000}},chat,options);assert.deepEqual(pages,[0,20]);assert.equal(first.cars.length,12);const initial=new Set(chat.cars.map(c=>c.id));
- const second=await agent.execute('search_market',{filters:{maxPrice:150000}},chat,options);assert.deepEqual(pages,[0,20,40]);assert.ok(second.cars.every(c=>!initial.has(c.id)));
- await sessions.start({maxPrice:150000});assert.deepEqual(pages.slice(-2),[0,20]);
+ const first=await agent.execute('search_market',{filters:{maxPrice:150000}},chat,options);assert.deepEqual(pages,[0,20,40,60]);assert.equal(first.cars.length,16);assert.equal(first.displayedCount,48);assert.equal(first.sampleIsSubset,true);const initial=new Set(chat.cars.map(c=>c.id));
+ const second=await agent.execute('search_market',{filters:{maxPrice:150000}},chat,options);assert.deepEqual(pages,[0,20,40,60]);assert.equal(second.displayedCount,60);assert.equal(chat.cars.filter(c=>!initial.has(c.id)).length,12);assert.ok([...initial].every(id=>chat.cars.some(c=>c.id===id)));
+ await sessions.start({maxPrice:150000});assert.deepEqual(pages.slice(-4),[0,20,40,60]);
 });
 
 test('Bytbil translates the verified BMW family label used by its ordinary search form',()=>{const {listURL}=require('../electron/html-sources.cjs');assert.equal(new URL(listURL('bytbil',{models:['3-serie']},'BMW')).searchParams.get('Models'),'3-serien');});

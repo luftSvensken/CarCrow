@@ -18,4 +18,4 @@ node scripts/check-embeddings.cjs
 
 Exporten skrivs till `models/embeddinggemma-2/`, som Git ignorerar. Den kan också kopieras från en verifierad export. `CARCROW_MODEL_CACHE` och `CARCROW_ONNX_OUTPUT` kan styra byggmapparna. Dessa är utvecklarinställningar och saknar reglage i appen.
 
-ONNX Runtime Node 1.22.0 används eftersom den innehåller CPU-motor för Intel-Mac. Dess installationshjälpare har uppdaterade beroenden via package.json-overrides. Produktionsberoenden kontrolleras med npm audit. OpenRouter används separat för chatten och är låst till `openrouter/free`.
+ONNX Runtime Node 1.22.0 används eftersom den innehåller CPU-motor för Intel-Mac. Dess installationshjälpare har uppdaterade beroenden via package.json-overrides. Produktionsberoenden kontrolleras med npm audit. OpenRouter används separat för chatten och är låst till de fasta gratismodellerna Nemotron 3 Super och Ultra.

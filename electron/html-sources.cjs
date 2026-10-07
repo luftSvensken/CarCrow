@@ -51,7 +51,7 @@ function parseWaykeDetail(html,url){
   const identities=Array.isArray(d.identifier)?d.identifier:[d.identifier].filter(Boolean);const plate=identities.find(x=>x.propertyID==='registrationNumber')?.value||fields.Registreringsnummer;
   return {id:url.split('/objekt/')[1]?.split('?')[0]||'',title:d.name,make,model,variant,comparisonVariant:make==='BMW'&&/^\d{3}[deix]/i.test(variant)?variant.match(/^\d{3}[deix]+/i)[0]:variant.split(/\s+/).slice(0,2).join(' '),bodyType:fields.Kaross||d.bodyType||'',year:Number(d.vehicleModelDate),mileage,fuel,gearbox,price:Number(d.offers.price),url:d.url||url,images:(Array.isArray(d.image)?d.image:[d.image].filter(Boolean)).slice(0,40),seller:d.offers.seller?.name||fields['Säljare']||'',city:fields['Säljarens plats']||'',vin:vin(d.vehicleIdentificationNumber),registration:registration(plate),description:text($('[data-testid="item-v2-description"]').first()),publishedAt:d.offers.validFrom};
 }
-function parseDetail(id,html,url){return id==='riddermark'?require('./dealer-sources.cjs').riddermarkDetail(html,url):id==='kvd'?require('./dealer-sources.cjs').parseKvdDetail(html,url):id==='bilweb'?parseBilwebDetail(html,url):id==='wayke'?parseWaykeDetail(html,url):parseBytbilDetail(html,url);}
+function parseDetail(id,html,url){const ad=id==='riddermark'?require('./dealer-sources.cjs').riddermarkDetail(html,url):id==='kvd'?require('./dealer-sources.cjs').parseKvdDetail(html,url):id==='bilweb'?parseBilwebDetail(html,url):id==='wayke'?parseWaykeDetail(html,url):parseBytbilDetail(html,url);return ad&&!ad.inactive&&require('./sale-quality.cjs').saleIssue(ad)?null:ad;}
 function listLinks(html,id){
   const $=require('cheerio').load(html),base=id==='bilweb'?'https://bilweb.se':id==='wayke'?'https://www.wayke.se':'https://www.bytbil.com';
   if(id==='kvd')return [...new Set($('a[href^="/auktioner/"]').toArray().map(e=>new URL($(e).attr('href'),'https://www.kvd.se').href))];
@@ -76,11 +76,11 @@ function listURL(id,f,make){
     if(f.gearbox)u.searchParams.set('transmission',f.gearbox==='Automat'?'Automatisk':'Manuell');
     for(const fuel of f.fuelTypes||[])u.searchParams.append('fuel',fuel);
     if(f.sort==='priceAsc'||f.sort==='priceDesc'){u.searchParams.set('sort_by','price');u.searchParams.set('sort_order',f.sort==='priceAsc'?'asc':'desc');}
-    if(f.query)u.searchParams.set('q',f.query);
+    const query=require('./search-query.cjs').sourceQuery(f);if(query)u.searchParams.set('q',query);
   }else{
     for(const [k,param] of [['minPrice','price.min'],['maxPrice','price.max'],['minYear','modelYear.min'],['maxYear','modelYear.max'],['maxMileage','odometer.max']])if(f[k]!=null)u.searchParams.set(param,String(f[k]));
     if(f.gearbox)u.searchParams.set('gearboxType',f.gearbox);
-    if(f.query)u.searchParams.set('q',f.query);
+    const query=require('./search-query.cjs').sourceQuery(f);if(query)u.searchParams.set('q',query);
   }
   return u.href;
 }
