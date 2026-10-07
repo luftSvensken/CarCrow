@@ -2,9 +2,9 @@
 
 Lokalt kontrollerad 7 oktober 2026. Releaseflödet publicerar endast efter godkända Windows- och Apple Silicon-kontroller av de faktiska paketen.
 
-- 109 data- och agenttester passerar på Mac. Ett plattformstest kör PowerShell-parsern på Windows. Nya tester omfattar egna märken, ort/radie, hårda intervall, lokal omsortering, SQL.js-reserv, chattsökning, verkligt ID-urval och Bilweb-migrering.
+- 112 data- och agenttester passerar på Mac. Ett plattformstest kör PowerShell-parsern på Windows. Nya tester omfattar egna märken, ort/radie, hårda intervall, lokal omsortering, SQL.js-reserv, chattsökning, verkligt ID-urval och Bilweb-migrering.
 - Elva Worker-tester samt typkontroll och torr publicering passerar. Koordinater går inte till AI-modellen. Platsdelningen är avstängd från början och kräver uttryckligt samtycke.
-- 17 befintliga och sju nya kontroller av Electron-gränssnittet passerar, inklusive sökbara filter, egen märkestext, ort utan positionsdelning, felaktiga intervall och sökning i chattmeddelanden. Den verkliga lokala EmbeddingGemma 2-modellen ingår i paketerade tester.
+- 17 befintliga och åtta nya kontroller av Electron-gränssnittet passerar, inklusive sökbara filter, egen märkestext, ort utan positionsdelning, felaktiga intervall och sökning i chattmeddelanden. Den verkliga lokala EmbeddingGemma 2-modellen ingår i paketerade tester.
 - Verkliga V70 Business- och ortsökningar har gett 51 matchande annonser. BYD som tidigare saknades i märkeslistan fungerar. Första kort visas före full källomgång; lokal omsortering tog cirka 2–4 ms i dessa körningar. Tider varierar med dator, nätverk och källor.
 - Webbimporten har verifierat originalannonser hos bland annat Holmgrens Bil och Wayke. Bilkort skapas endast från läsbara originaluppgifter; saknade uppgifter förblir okända och klarar inte hårda intervallfilter.
 - AI:n har testats med riktiga annonser för billig första bil under 60 000 kr och V70 Business som uppföljning. Den väljer ett begränsat urval från verkliga kandidater. Påståenden om skick och service kräver annonsunderlag. Originalbeskrivningar används för att skilja leasingöverlåtelser från kontantannonser.
