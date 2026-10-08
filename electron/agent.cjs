@@ -64,13 +64,14 @@ class CarAgent {
     const similar=/liknande|liknar|alternativ till (?:den|denna)/i.test(text);
     const factual=/vanligaste? (?:fel|problem)|vanliga (?:fel|problem)|återkallel|common problems|^(?:är|hur|vad|kan|bör).*(?:pålitlig|tillförlitlig|driftsäker|kontrollera.*köp)/i.test(text);
     const lastUser=[...chat.messages].reverse().find(m=>m.role==='user');if(selected.length&&!similar&&lastUser)lastUser.contextualQuestion=true;
-    const userMessages=chat.messages.filter(m=>m.role==='user'),allUserTexts=userMessages.filter(m=>!m.contextualQuestion).map(m=>m.text),userTexts=userMessages.slice(chat.intentStart||0).filter(m=>!m.contextualQuestion).map(m=>m.text);
+    if(similar&&selected.length&&lastUser){lastUser.intentText=text;for(const car of selectedCars)for(const name of [car.make,car.model])if(name)lastUser.intentText=lastUser.intentText.replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'),' ');}
+    const userMessages=chat.messages.filter(m=>m.role==='user'),allUserTexts=userMessages.filter(m=>!m.contextualQuestion).map(m=>m.text),userTexts=userMessages.slice(chat.intentStart||0).filter(m=>!m.contextualQuestion).map(m=>m.intentText??m.text);
     const intent=userIntent(userTexts,{...(autoLocation?{location:autoLocation}:{}),...(chat.userFilters||{}),...filters},this.store.facets(this.demo()).models);
     const searchRequest=(!selected.length||similar)&&!factual&&(/sök|hitta|vill ha|letar|spanar|billig|första bil|familjebil|under\s*\d|max\s*\d|budget|andra förslag|lägre miltal|alternativ|alla märken|alla modeller|inte|ingen|utan/i.test(text)||Object.keys(explicitBounds(text)).length>0||require('./search-intent.cjs').explicitModels(text).length>0||require('./search-intent.cjs').explicitMakes(text).length>0);
     const webQuestion=/pålitlig|tillförlitlig|vanligaste? (?:fel|problem)|vanliga (?:fel|problem)|driftsäker|återkallel|reliability|common problems|kontrollera.*(?:köp|kop)/i.test(text)&&!searchRequest;
     chat.userFilters=filters;chat.hardFilters=intent;chat.filters=intent;
     chat.preferences=preferences(allUserTexts,similar?selectedCars:[]);
-    chat.excludeIds=/andra förslag|undvik bilarna.*visat|andra alternativ/i.test(text)?[...new Set([...(chat.shownIds||[]),...chat.cars.map(c=>c.id)])]:[];
+    chat.excludeIds=similar?selectedCars.map(c=>c.id):/andra förslag|undvik bilarna.*visat|andra alternativ/i.test(text)?[...new Set([...(chat.shownIds||[]),...chat.cars.map(c=>c.id)])]:[];
     chat.diverseSearch=(chat.preferences.first||chat.preferences.family||chat.preferences.sporty)&&!intent.models?.length;
     const needsBudget=searchRequest&&intent.maxPrice==null&&!intent.models?.length&&!intent.makes?.length&&chat.preferences.first;
     const system=`Du är CarCrow, en svensk bilsökagent. Ge ett precist och kort svar på svenska, normalt 1–3 meningar och högst 60 ord. Inga tabeller eller uppräkningar av bilspecifikationer: användaren ser dem i bilkorten. Visa inga träffantal. Börja med vad underlaget visar och nämn högst tre alternativ vid behov.
