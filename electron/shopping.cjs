@@ -7,7 +7,7 @@ function preferences(texts=[],seeds=[]){
   sporty:/sportig|rolig|kor(glad|kansla)|korupplevelse/.test(text),
   project:/projektbil|reparationsobjekt|reservdel|mek(a|projekt)/.test(text),
   lowMileage:/lagre miltal|lagt miltal|farre mil/.test(texts.at(-1)?normalize(texts.at(-1)):''),
-  excludedMakes:require('./search-query.cjs').makes.filter(m=>new RegExp('(?:inte|ingen|inga|utom) '+normalize(m)+'\\b').test(text)),
+  excludedMakes:require('./search-query.cjs').makes.filter(m=>new RegExp('(?:inte(?: ha)?|ingen|inga|utom) '+normalize(m)+'\\b').test(text)),
   seeds:seeds.map(c=>({make:c.make,model:c.model,bodyType:c.bodyType,price:c.price,fuel:c.fuel,gearbox:c.gearbox}))
  };
 }

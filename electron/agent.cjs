@@ -26,7 +26,7 @@ function sampleCars(cars,limit=48){return cars.length<=limit?cars:Array.from({le
 function webVehicleQuery(car){
  if(!car)return '';let model=car.model||'';const variant=car.variant||'';
  if(/^\d{3}$/.test(model)&&/^i\b/i.test(variant))model+='i';
- const trim=variant.match(/\b(?:\d{3}(?:d|i|e)|[1-6][.,]\d\s*(?:TDI|TFSI|TSI|CDI|CRDi)|[DBT]\d)\b/i)?.[0]||'';
+ const trim=variant.match(/\b(?:\d{3}(?:d|i|e)|[1-6][.,]\d\s*(?:TDI|TFSI|TSI|CDI|CRDi|i[- ]?VTEC|VVT[- ]?i)|[DBT]\d)\b/i)?.[0]||'';
  if(car.make==='BMW'&&/^[1-8]\d{2}[a-z]?$/i.test(model))model=model[0]+' Series '+model;
  const body=/^cab(?:riolet)?$/i.test(car.bodyType||'')?'convertible':/^coup[eé]$/i.test(car.bodyType||'')?'coupe':null;
  const fuel=/bensin/i.test(car.fuel||'')?'petrol':/diesel/i.test(car.fuel||'')?'diesel':null;
@@ -178,7 +178,7 @@ function shortReason(value,car,filters={}){
  const claims=['bra skick','fint skick','utmärkt skick','välskött','nyligen besiktad','nyligen servad','nyservad','nybesiktad','nybesiktigad','pålitlig','driftsäker','problemfri','felfri'];
  const sellers=[...value.matchAll(/\b(?:från|hos|via)\s+([A-ZÅÄÖ][\wåäöÅÄÖ-]*(?:\s+(?:[A-ZÅÄÖ][\wåäöÅÄÖ-]*|bil|bilhandel|autogroup))*)/g)].map(m=>m[1].toLowerCase());
  const badNumber=[...value.matchAll(/(\d[\d \u00a0\u202f]*)\s*(kr|kronor|km|kilometer|mil)\b/gi)].some(m=>{const n=Number(m[1].replace(/\s/g,'')),u=m[2].toLowerCase();return /kr|kronor/.test(u)?![car.price,filters.maxPrice,filters.maxPrice!=null?filters.maxPrice+1:null].includes(n):n!==(u==='mil'?car.mileage:car.mileage*10);});
- if(badNumber||sellers.some(seller=>!evidence.includes(seller))||claims.some(claim=>value.toLowerCase().includes(claim)&&!evidence.includes(claim))){
+ if(badNumber||sellers.some(seller=>!evidence.includes(seller))||claims.some(claim=>value.toLowerCase().includes(claim)&&(!evidence.includes(claim)||['pålitlig','driftsäker','problemfri','felfri'].includes(claim)))){
   if(filters.location&&car.distanceKm!=null)return `Cirka ${car.distanceKm} km från ${filters.location.label}, inom dina valda gränser.`;
   return [filters.maxPrice?'Inom din budget':`Matchar dina valda filter`,car.fuel?car.fuel.toLowerCase():null,car.gearbox?car.gearbox.toLowerCase()+' växellåda':null].filter(Boolean).join(', ')+'.';
  }
@@ -189,6 +189,7 @@ function groundedSelectionAnswer(answer,cars=[]){
  if(!cars.length)return answer;
  const evidence=cars.map(c=>[c.title,c.variant,c.description].join(' ')).join(' ').toLowerCase();
  const claims=['bra skick','fint skick','välskött','nyligen besiktad','nyligen servad','nyservad','nybesiktad','nybesiktigad','full servicehistoria','full servicehistorik','komplett service','felfri','problemfri','väl fungerande motor','bra pålitlighet','pålitlig','driftsäker'];
+ if(/\bID[ :\u202f]|[a-f\d]{8}-[a-f\d-]{20,}|känd för|god bränsleekonomi|enkel service|ger bra pålitlighet/i.test(answer))return 'Jag har valt bilar som matchar dina krav. Kontrollera skick och service i originalen.';
  if(claims.some(claim=>answer.toLowerCase().includes(claim)&&!evidence.includes(claim)))return 'Jag har handplockat ett urval som matchar dina krav. Bilkorten visar de verifierade uppgifterna och varför jag valt bilarna.';
  return answer;
 }
@@ -216,8 +217,10 @@ function guardWebAnswer(answer,sources,cars=[]){
  if(codes.some(code=>!evidence.includes(code)))return 'Annonsunderlaget bekräftar inte den motor- eller generationskod som svaret bygger på. Kontrollera motorvarianten först och jämför sedan med källorna nedan.';
  const fallback='Källorna ger modellinformation '+read.slice(0,3).map(s=>'['+s.number+']').join(' ')+' men styrker inte de här felen för den exakta motor- och karossvarianten. Kontrollera servicehistorik och låt en verkstad bedöma bilen. Eventuella återkallelser behöver bekräftas med chassinummer hos tillverkaren.';
  const sourceText=read.map(s=>s.excerpt||'').join(' '),numberKey=s=>s.replace(/[, .\u00a0\u202f]/g,'');const knownNumbers=new Set((sourceText.match(/\b\d[\d,. \u00a0\u202f]*\d\b/g)||[]).map(numberKey));
+ const distances=[...sourceText.matchAll(/\b(\d[\d,. \u00a0\u202f]*\d|\d)\s*(km|kilomet(?:er|re)s?|mil(?!es)|miles)\b/gi)].map(m=>({number:numberKey(m[1]),unit:/^mil$/i.test(m[2])?'mil':/^mile/i.test(m[2])?'miles':'km'}));
+ if([...answer.matchAll(/\b(\d[\d,. \u00a0\u202f]*\d|\d)\s*(km|kilometer|mil|miles)\b/gi)].some(m=>!distances.some(d=>d.number===numberKey(m[1])&&d.unit===(/^mil$/i.test(m[2])?'mil':/^mile/i.test(m[2])?'miles':'km'))))return fallback;
  if([...answer.replace(/\[\d+\]/g,'').matchAll(/\b(\d[\d,. \u00a0\u202f]*\d|\d)\s*(?:km|kilometer|mil|miles)\b/gi)].some(m=>!knownNumbers.has(numberKey(m[1]))))return fallback;
- const trim=cars[0]&&webVehicleQuery(cars[0]).match(/\b\d{3}[die]\b/i)?.[0];
+ const trim=cars[0]?.variant?.match(/\b(?:\d{3}[die]|[1-6][.,]\d(?:\s*(?:TSI|TFSI|TDI|CDI|CRDi|i[- ]?VTEC|VVT[- ]?i))?|[DBT]\d)\b/i)?.[0]||(cars[0]?webVehicleQuery(cars[0]).match(/\b\d{3}[die]\b/i)?.[0]:null);
  if(trim&&/kamkedj|timing[\s‑-]*chain|kedjespänn|insprut|injector|turboladd|kolvring|topplock|bränslefiltervärm/i.test(answer)&&references.some(n=>{const source=read.find(s=>s.number===n);return source&&!String(source.excerpt||'').toLowerCase().includes(trim.toLowerCase());}))return fallback;
  return answer;
 }

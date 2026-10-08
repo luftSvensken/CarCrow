@@ -13,7 +13,7 @@ function cashSaleAssessment(ad){
  if(/\b(?:vi koper|kopes|koper din|bilar sokes|bilar koper vi)\b/.test(heading))return result('buying','Köpesannons, inte en bil till salu.');
  const specs=ad.priceSpecification||{},basis=norm([ad.priceType,ad.priceKind,ad.saleType,ad.saleForm,ad.businessFunction,ad.priceUnit,ad.pricePeriod,specs.unitText,specs.unitCode,specs.billingDuration,specs.priceType,specs.businessFunction].filter(Boolean).join(' '));
  const primary=norm(ad.priceText),monthly=/\/\s*(?:man(?:ad)?|month)|per\s+(?:manad|month)|\b(?:monthly|month|mon|p1m|manadskostnad|manadspris)\b/;
- if(monthly.test(primary+' '+basis)||/lease|leasing|rent|hyra/.test(basis))return result('monthly','Månadspris eller leasing, inte bilens kontantpris.');
+ if(/^(?:manad|man|month|monthly|mon|p1m)$/.test(norm(ad.priceUnit||ad.pricePeriod||specs.unitText||specs.unitCode))||monthly.test(primary+' '+basis)||/lease|leasing|rent|hyra/.test(basis))return result('monthly','Månadspris eller leasing, inte bilens kontantpris.');
  if(/downpayment|deposit|kontantinsats|handpenning|forhojd.*(?:avgift|hyra)/.test(basis+' '+primary))return result('deposit','Kontantinsats eller handpenning, inte bilens totalpris.');
  if(/auction|bid|budpris|hogsta bud|utropspris/.test(basis+' '+primary))return result('auction','Bud eller utropspris, inte ett fast kontantpris.');
  const all=heading+' '+body;
@@ -23,6 +23,7 @@ function cashSaleAssessment(ad){
  if(!explicitCash&&(payments.includes(price)||prefix.includes(price)))return result('monthly','Annonspriset avser betalning per månad eller insats, inte ett kontantpris.');
  if(/(?:overlat(?:es|else)|ta over|overtagande).{0,90}leas|leas.{0,90}(?:overlat(?:es|else)|ta over|overtagande)/.test(all))return result('lease','Leasingöverlåtelse, inte en bil till salu för kontantpriset.');
  if(!explicitCash&&/privatleasing|leasingerbjudande|\bleasing\b/.test(heading))return result('lease','Leasingerbjudande utan verifierat kontantpris.');
+ if(!explicitCash&&/privatleasingerbjudande|erbjudande.{0,30}privatleasing|endast privatleasing/.test(body))return result('lease','Privatleasing utan verifierat kontantpris.');
  if(explicitCash)return result('purchase');
  // A finance example with a different payment never invalidates a cash sale.
  const ambiguous=/leas|manadspris|manadskostnad|kontantinsats/.test(body)&&!payments.length;

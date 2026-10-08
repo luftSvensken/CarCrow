@@ -2,13 +2,13 @@ const {normalize,makes}=require('./search-query.cjs');
 const {validateFilters}=require('./core.cjs');
 const modelNames=['V40','V50','V60','V70','V90','S40','S60','S80','S90','XC40','XC60','XC70','XC90','Jazz','Civic','Accord','CR-V','Fit','Mazda 2','Mazda 3','Mazda 6','MX-5','Yaris','Corolla','Auris','Avensis','RAV4','Golf','Passat','Polo','Tiguan','Touran','Octavia','Fabia','Superb','Focus','Fiesta','Mondeo','Model 3','Model Y','A1','A3','A4','A5','A6','Q3','Q5','Q7','9-3','9-5'];
 function hasPhrase(text,phrase){return (' '+normalize(text)+' ').includes(' '+normalize(phrase)+' ');}
-function explicitMakes(text){const found=makes.filter(m=>hasPhrase(text,m));return found.filter(m=>!new RegExp('(?:inte|ingen|inga|utom) '+normalize(m)+'\\b').test(normalize(text)));}
+function explicitMakes(text){const found=makes.filter(m=>hasPhrase(text,m));return found.filter(m=>!new RegExp('(?:inte(?: ha)?|ingen|inga|utom) '+normalize(m)+'\\b').test(normalize(text)));}
 function explicitModels(text,facets=[]){
  const found=[...new Set([...modelNames,...facets.map(m=>m.model)])].filter(m=>hasPhrase(text,m));
  for(const match of normalize(text).matchAll(/\b([1-8])\s*serie\b/g))found.push(match[1]+'-serie');
  // A numbered BMW badge is a model, not a minimum model year or budget.
  for(const match of normalize(text).matchAll(/\b([1-8]\d{2}[diex]+)\b/g))found.push(match[1]);
- return [...new Set(found)].filter(m=>!new RegExp('(?:inte|ingen|inga|utom) '+normalize(m)+'\\b').test(normalize(text)));
+ return [...new Set(found)].filter(m=>!new RegExp('(?:inte(?: ha)?|ingen|inga|utom) '+normalize(m)+'\\b').test(normalize(text)));
 }
 function explicitBounds(text){
  const bounds={};
@@ -37,6 +37,7 @@ function userIntent(texts,ui={},facets=[]){
   if(/(?:manuell eller automat|automat eller manuell|växellåda spelar ingen roll|alla växellådor)/i.test(text))delete out.gearbox;
   if(/(?:miltal spelar ingen roll|ingen milgräns)/i.test(text)){delete out.maxMileage;delete out.minMileage;}
   if(/(?:årsmodell spelar ingen roll|alla årsmodeller)/i.test(text)){delete out.minYear;delete out.maxYear;}
+  const negative=normalize(text),rejectedModels=(out.models||[]).filter(m=>new RegExp('(?:inte(?: ha)?|ingen|inga|utom) '+normalize(m)+'\\b').test(negative));if(rejectedModels.length){out.models=out.models.filter(m=>!rejectedModels.includes(m));if(!out.models.length)delete out.models;}
   if(brands.length){out.makes=brands;delete out.models;}
   if(models.length)out.models=models;
   const specifics=text.match(/\b(?:business(?: edition)?|summum|momentum|inscription|dragkrok|panoramatak|skinn|m[- ]sport|r[- ]design)\b/gi);if(specifics?.length)out.query=specifics.join(' ');
