@@ -1,4 +1,10 @@
-# Verifiering av CarCrow 0.6
+# Verifiering av CarCrow 0.7
+
+`npm test` omfattar samtalsändringar, bilurval, betalningsformer, fortsatta sökspår och migrationsskydd. `scripts/smoke07.cjs` verifierar sortering av AI-urval, bilfrågor, liknande bilar, borttagna filter samt bred och smal layout med en separat profil. Windows och Mac-paketen kör dessa kontroller före publicering.
+
+Aktuella annonser och gratis-AI provas separat; nätverksresultat och svar kan variera. Inga riktiga användarchattar eller nycklar följer med testprofiler eller GitHub.
+
+# Tidigare verifiering av CarCrow 0.6
 
 Lokalt kontrollerad 7 oktober 2026. Releaseflödet publicerar endast efter godkända Windows- och Apple Silicon-kontroller av de faktiska paketen.
 

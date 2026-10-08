@@ -28,6 +28,9 @@ function normalizeListing(raw,source) {
   for(const k of ['city','seller','variant','comparisonVariant','bodyType','description']) result[k]=raw[k]?cleanString(raw[k],k==='description'?6000:150):'';
   if(raw.images!==undefined && (!Array.isArray(raw.images)||raw.images.length>40)) throw new Error('Ogiltig bildlista.');
   result.images=(raw.images||[]).map(httpsURL);
+  for(const k of ['priceText','priceType','priceKind','saleType','saleForm','businessFunction','priceUnit','pricePeriod'])if(raw[k]!=null)result[k]=cleanString(String(raw[k]),200);
+  if(raw.cashPrice===raw.price)result.cashPrice=raw.price;
+  if(raw.priceSpecification&&typeof raw.priceSpecification==='object')result.priceSpecification=Object.fromEntries(['unitText','unitCode','billingDuration','priceType','businessFunction'].filter(k=>raw.priceSpecification[k]!=null).map(k=>[k,String(raw.priceSpecification[k]).slice(0,100)]));
   result.bodyType=normalizeBody(result.bodyType);
   if(['dealer','private'].includes(raw.sellerType))result.sellerType=raw.sellerType;
   if(Number.isFinite(raw.latitude)&&Number.isFinite(raw.longitude)&&Math.abs(raw.latitude)<=90&&Math.abs(raw.longitude)<=180){result.latitude=raw.latitude;result.longitude=raw.longitude;}
@@ -86,9 +89,10 @@ class Store {
       CREATE TABLE IF NOT EXISTS watch_checks(watch_id TEXT PRIMARY KEY,checked_at TEXT,error TEXT);
       CREATE TABLE IF NOT EXISTS watches(id TEXT PRIMARY KEY,name TEXT,filters TEXT,demo INTEGER,created TEXT,seen TEXT);`);
     // Migrate old caches once; chats, saved cars and source history keep their IDs.
-    const missing=store.rows('SELECT id,data FROM listings WHERE id NOT IN (SELECT id FROM listing_search_text) OR id NOT IN (SELECT id FROM listing_facets)');
+    const missing=store.rows(store.setting('lexicalIndex07')?'SELECT id,data FROM listings WHERE id NOT IN (SELECT id FROM listing_search_text) OR id NOT IN (SELECT id FROM listing_facets)':'SELECT id,data FROM listings');
     if(missing.length){store.db.run('BEGIN');try{for(const row of missing)store.indexListing(row.id,JSON.parse(row.data));store.db.run('COMMIT');}catch(e){store.db.run('ROLLBACK');throw e;}}
-    if(!store.setting('cashSaleCleanup06')){store.db.run('BEGIN');try{for(const row of store.rows('SELECT id,data FROM listings WHERE active=1'))if(saleIssue(JSON.parse(row.data)))store.db.run('UPDATE listings SET active=0 WHERE id=?',[row.id]);store.db.run('COMMIT');}catch(e){store.db.run('ROLLBACK');throw e;}store.setSetting('cashSaleCleanup06',true);}
+    store.setSetting('lexicalIndex07',true);
+    if(!store.setting('cashSaleCleanup07')){store.db.run('BEGIN');try{for(const row of store.rows('SELECT id,data FROM listings WHERE active=1'))if(saleIssue(JSON.parse(row.data)))store.db.run('UPDATE listings SET active=0 WHERE id=?',[row.id]);store.db.run('COMMIT');}catch(e){store.db.run('ROLLBACK');throw e;}store.setSetting('cashSaleCleanup07',true);}
     if(!store.setting('plugInFuel06')){
       store.db.run('BEGIN');try{
         for(const row of store.rows("SELECT id,data FROM listings WHERE fuel='Hybrid'")){

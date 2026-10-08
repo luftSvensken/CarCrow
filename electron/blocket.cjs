@@ -2,6 +2,7 @@ const crypto=require('node:crypto');
 const {requestJSON}=require('./services.cjs');
 const {validateFilters,normalizeListing}=require('./core.cjs');
 const brands=require('./blocket-brands.json');
+const {cashAmount,saleIssue}=require('./sale-quality.cjs');
 const {sourceQuery,normalize}=require('./search-query.cjs');
 function originalDescription(html){
  if(typeof html!=='string')return '';
@@ -20,7 +21,7 @@ function parseCar(d){
   if(d.sales_form!=null&&d.sales_form!==1)return null;
   if(d.price?.currency_code!=='SEK'||!Number.isInteger(d.price.amount)||d.price.amount<=100)return null;
   if(/(?:vi köper|köpes|köper din|bilar sökes)/i.test(d.heading+' '+(d.model_specification||'')))return null;
-  if(/privatleasing|(?:\d|kr|:-)\s*\/\s*mån|leasing\s+\d/i.test(d.heading+' '+(d.model_specification||'')))return null;
+  if(saleIssue({title:d.heading,variant:d.model_specification,price:d.price.amount,priceText:d.price.display||d.price.formatted,pricePeriod:d.price.period,priceType:d.price.type,description:d.description||''}))return null;
   if(!Number.isInteger(d.year)||!Number.isInteger(d.mileage))return null;
   const unit=d.mileage_unit;let mileage=d.mileage;
   if(unit==='KILOMETER'||unit==='KM')mileage=Math.round(mileage/10);
@@ -30,7 +31,7 @@ function parseCar(d){
   const reg=d.regno&&/^[A-Z0-9]{6,10}$/.test(d.regno.replace(/[ -]/g,''))?d.regno:null;
   const vin=d.chassis_number&&/^[A-HJ-NPR-Z0-9]{17}$/.test(d.chassis_number)?d.chassis_number:null;
   const images=(Array.isArray(d.image_urls)?d.image_urls:d.image?.url?[d.image.url]:[]).filter(x=>typeof x==='string'&&x.startsWith('https://')).slice(0,40);
-  return {id:String(d.id),title:d.heading,make:d.make,model:modelName(d),variant:d.model_specification||d.model||'',comparisonVariant:d.model||'',bodyType:d.body_type||'',year:d.year,mileage,price:d.price.amount,fuel,gearbox,registration:reg,vin,url:d.canonical_url,city:typeof d.location==='string'?d.location:d.location?.name||'',sellerType:({'Privat':'private','Företag':'dealer'})[d.dealer_segment],seller:d.organisation_name||({'Privat':'Privat säljare','Företag':'Bilhandlare'})[d.dealer_segment]||'',images,publishedAt:d.timestamp?new Date(d.timestamp).toISOString():undefined,description:''};
+  return {id:String(d.id),title:d.heading,make:d.make,model:modelName(d),variant:d.model_specification||d.model||'',comparisonVariant:d.model||'',bodyType:d.body_type||'',year:d.year,mileage,price:d.price.amount,fuel,gearbox,registration:reg,vin,url:d.canonical_url,city:typeof d.location==='string'?d.location:d.location?.name||'',sellerType:({'Privat':'private','Företag':'dealer'})[d.dealer_segment],seller:d.organisation_name||({'Privat':'Privat säljare','Företag':'Bilhandlare'})[d.dealer_segment]||'',images,publishedAt:d.timestamp?new Date(d.timestamp).toISOString():undefined,description:typeof d.description==='string'?d.description:'',priceText:d.price.display||d.price.formatted,pricePeriod:d.price.period,priceType:d.price.type};
 }
 function buildURL(filters,page=1){
   const f=validateFilters(filters);const u=new URL('https://blocket-api.se/v1/search/car');u.searchParams.set('page',String(page));u.searchParams.set('sort_order',f.sort==='priceAsc'?'PRICE_ASC':f.sort==='priceDesc'?'PRICE_DESC':f.sort==='relevance'||(!f.sort&&(f.query||f.models?.length))?'RELEVANCE':'PUBLISHED_DESC');
@@ -63,8 +64,8 @@ async function verifyKnown(store,source,{request=requestJSON,limit=5}={}){
       // A failed parser or empty response is not evidence of a deletion.
       if(r.ad_id!==String(ad.id)&&String(r.ad_id)!==String(ad.id))continue;
       if(!r.title||!r.price)continue;
-      const price=Number(String(r.price).replace(/[^0-9]/g,''));const mileage=/mil/.test(r.mileage||'')?Number(String(r.mileage).replace(/[^0-9]/g,'')):ad.mileage;
-      store.importSnapshot(source,{schemaVersion:1,complete:false,listings:[{...ad,title:r.title,price:price>0?price:ad.price,mileage,description:r.equipment?.length?'Utrustning enligt annonsen:\n'+r.equipment.join(' · '):ad.description}]});checked++;
+      const price=cashAmount(r.price);if(!price||saleIssue({...ad,title:r.title,price:price||ad.price,priceText:r.price})){store.excludeListing(row.id);checked++;continue;}const mileage=/mil/.test(r.mileage||'')?Number(String(r.mileage).replace(/[^0-9]/g,'')):ad.mileage;
+      store.importSnapshot(source,{schemaVersion:1,complete:false,listings:[{...ad,title:r.title,price,priceText:String(r.price),mileage,description:r.equipment?.length?'Utrustning enligt annonsen:\n'+r.equipment.join(' · '):ad.description}]});checked++;
     }catch(e){if(e.status===404||e.status===410){store.removeListing(row.id);removed++;}else break;}
   }return {removed,checked};
 }

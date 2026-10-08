@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version in package.json, for example 0.6.0'
+        description: 'Version in package.json, for example 0.7.0'
         required: true
         type: string
 
@@ -72,6 +72,7 @@ jobs:
           if [ "$TARGET_ARCH" = arm64 ]; then export CARCROW_EXECUTABLE="$PWD/release/mac-arm64/CarCrow.app/Contents/MacOS/CarCrow"; else export CARCROW_EXECUTABLE="$PWD/release/mac/CarCrow.app/Contents/MacOS/CarCrow"; fi
           node scripts/smoke.cjs
           node scripts/smoke06.cjs
+          node scripts/smoke07.cjs
       - name: Archive Mac app
         env:
           TARGET_ARCH: ${{ matrix.arch }}

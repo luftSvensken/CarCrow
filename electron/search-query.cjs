@@ -5,7 +5,9 @@ const makes=require('./brands.cjs').displayBrands;
 const vocabulary=[...makes.map(x=>basic(x)), 'business','summum','momentum','inscription','r design','dragkrok','panorama','octavia','passat','golf','corolla','yaris','avensis','auris','jazz','civic','focus','fiesta','mondeo','outback','forester','tiguan','touran','superb','fabia'];
 function basic(s){return String(s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');}
 function normalize(s){
- const value=basic(s).replace(/\b([vscxa])(\s+)(\d{2,3})\b/g,'$1$3').replace(/\bmercedes benz\b/g,'mercedes');
+ const value=basic(s).replace(/\b([1-8]\d{2}[di])\s*(xdrive)\b/g,'$1 $2').replace(/\b([vscxa])(\s+)(\d{2,3})\b/g,'$1$3').replace(/\bmercedes benz\b/g,'mercedes')
+  .replace(/\br\s*design\b/g,'rdesign').replace(/\bm\s*sport\b/g,'msport').replace(/\bs\s*line\b/g,'sline')
+  .replace(/\bx\s*drive\b/g,'xdrive').replace(/\b4\s*(?:x\s*4)\b/g,'4x4');
  return value.split(' ').map(w=>aliases[w]||w).join(' ').replace(/\bmercedes benz benz\b/g,'mercedes benz').replace(/\s+/g,' ').trim();
 }
 function distance(a,b){let previous=Array.from({length:b.length+1},(_,i)=>i);for(let i=0;i<a.length;i++){const row=[i+1];for(let j=0;j<b.length;j++)row.push(Math.min(row[j]+1,previous[j+1]+1,previous[j]+(a[i]===b[j]?0:1)));previous=row;}return previous[b.length];}
@@ -28,14 +30,22 @@ function modelKeys(make,model,variant=''){
   const family=m.match(/^([1-8])\s*(?:serie|series)$/)?.[1]||m.match(/^([1-8])\d{2}(?:[a-z]+)?(?:\s|$)/)?.[1];
   if(family)keys.add(family+' serie');
  }
- if(/^v\d{2}\s+(?:ii|iii|iv|cross country)$/.test(m))keys.add(m.split(' ')[0]);
+ if(/^(?:v|s|c|xc)\d{2}\s+(?:ii|iii|iv|cross country)$/.test(m))keys.add(m.split(' ')[0]);
  // Model variants retain their exact badge as well as the manufacturer's family.
  for(const badge of normalize(variant).match(/\b\d{3}[die]\b/g)||[])keys.add(badge);
  return [...keys].join(' ');
 }
+function equipmentKeys(value){
+ const text=normalize(value),extra=[];
+ // Equivalent, explicit equipment badges can differ between the title and
+ // the user's wording. Do not infer equipment from a model, year or price.
+ if(/\b(?:awd|4wd|4x4|quattro|xdrive|4matic|4motion|fyrhjulsdrift|fyrhjulsdriven)\b/.test(text))extra.push('awd 4wd 4x4 quattro xdrive 4matic 4motion fyrhjulsdrift fyrhjulsdriven');
+ if(/\b(?:dragkrok|towbar|dragkroksutrustad)\b/.test(text))extra.push('dragkrok towbar');
+ return [text,...extra].join(' ');
+}
 function indexAd(ad){
- const make=normalize(ad.make),model=modelKeys(ad.make,ad.model,(ad.comparisonVariant||'')+' '+(ad.variant||'')),title=normalize(ad.title),variant=normalize((ad.variant||'')+' '+(ad.comparisonVariant||''));
- const full=normalize([ad.make,ad.model,model,ad.title,ad.variant,ad.comparisonVariant,ad.description,ad.bodyType,ad.fuel,ad.gearbox,ad.city,ad.seller,ad.year].filter(Boolean).join(' '));
+ const make=normalize(ad.make),model=modelKeys(ad.make,ad.model,(ad.comparisonVariant||'')+' '+(ad.variant||'')),title=equipmentKeys(ad.title),variant=equipmentKeys((ad.variant||'')+' '+(ad.comparisonVariant||''));
+ const full=equipmentKeys([ad.make,ad.model,model,ad.title,ad.variant,ad.comparisonVariant,ad.description,ad.bodyType,ad.fuel,ad.gearbox,ad.city,ad.seller,ad.year].filter(Boolean).join(' '));
  return [make,model,title,variant,full].map(s=>' '+s+' ');
 }
 function pattern(term){return '% '+term.replace(/[\\%_]/g,'\\$&')+(/\d/.test(term)?' %':'%');}
@@ -53,6 +63,9 @@ function modelSQL(models){
 function sourceQuery(f){
  const query=f.query?correctQuery(f.query):'';
  const model=f.models?.length===1?f.models[0]:'';
- return [model,query].filter(Boolean).filter((x,i,a)=>!i||normalize(a[0])!==normalize(x)).join(' ');
+ // A structured model plus a text trim must not duplicate the model tokens
+ // ("V70 V70 business") or lose the requested trim in the upstream query.
+ if(model&&query&&(' '+normalize(query)+' ').includes(' '+normalize(model)+' '))return query;
+ return [model,query].filter(Boolean).join(' ');
 }
-module.exports={normalize,correctQuery,terms,indexAd,querySQL,modelSQL,sourceQuery,modelKeys,makes,distance};
+module.exports={normalize,correctQuery,terms,indexAd,querySQL,modelSQL,sourceQuery,modelKeys,makes,distance,equipmentKeys};
