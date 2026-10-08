@@ -1,15 +1,16 @@
 # Uppdateringar och drift
 
-CarCrow 0.6 använder en Cloudflare Worker på gratisnivån. Den publicerade appen innehåller ingen OpenRouter-nyckel. `electron/ai-config.json` pekar på Workern, som väljer Nemotron 3 Super (free) och Nemotron 3 Ultra (free) som reserv. Endast godkända gratismodeller och strömmande anrop tillåts; prisgränsen för indata, utdata och anrop är noll. Nyckeln lagras som `OPENROUTER_API_KEY` i Cloudflare. Webbsökningen använder Tavilys officiella API via samma Worker. `TAVILY_API_KEY` är en separat Cloudflare-hemlighet. Gratisnivån ger 1 000 krediter per månad, och Workern tvingar basic-sökning utan betalda extrafunktioner. En sökning kostar en kredit och läsning av upp till tre relevanta källor högst en extra kredit. Identiska frågor cachas i 15 minuter. En gräns på sex sökningar per IP och minut minskar missbruk.
+CarCrow 0.7 använder en Cloudflare Worker på gratisnivån. Den publicerade appen innehåller ingen OpenRouter-nyckel. `electron/ai-config.json` pekar på Workern, som väljer Nemotron 3 Super (free) och Nemotron 3 Ultra (free) som reserv. Endast godkända gratismodeller och strömmande anrop tillåts; prisgränsen för indata, utdata och anrop är noll. Nyckeln lagras som `OPENROUTER_API_KEY` i Cloudflare. Webbsökningen använder Tavilys officiella API via samma Worker. `TAVILY_API_KEY` är en separat Cloudflare-hemlighet. Gratisnivån ger 1 000 krediter per månad, och Workern tvingar basic-sökning utan betalda extrafunktioner. En sökning kostar en kredit och läsning av upp till tre relevanta källor högst en extra kredit. Identiska frågor cachas i 15 minuter. En gräns på sex sökningar per IP och minut minskar missbruk.
 
 En gräns på 18 anrop per IP och minut minskar missbruk; OpenRouters delade gratiskvot kan fortfarande ta slut.
 
 ## Publicera en version
 
 1. Ändra `version` i `package.json` och kör `npm install --package-lock-only`.
-2. Skicka ändringen till GitHub och låt kontrollflödena testa den.
-3. Kör flödet **Release CarCrow** i GitHub Actions för önskad version.
-4. Flödet bygger och testar Mac Apple Silicon och Windows innan samma version publiceras i GitHub Releases. Mac signeras uttryckligen, och den färdiga zippen packas upp igen för strikt signaturkontroll, karantänmarkering och ett prov som upptäcker ändrade appresurser. Felaktiga signaturer stoppar publiceringen.
+2. Lägg in ändringen på `main`, exempelvis genom att slå ihop en godkänd pull request. **Release CarCrow** startar automatiskt när `package.json` ändras. Om versionen redan är publicerad skapas ingen ny release.
+3. Flödet bygger och testar Mac Apple Silicon och Windows innan samma version publiceras i GitHub Releases. Mac signeras uttryckligen, och den färdiga zippen packas upp igen för strikt signaturkontroll, karantänmarkering och ett prov som upptäcker ändrade appresurser. Felaktiga signaturer stoppar publiceringen.
+
+Det går även att starta **Release CarCrow** manuellt i GitHub Actions, exempelvis efter ett tillfälligt fel. Ange då samma version som i `package.json`. Publicering kräver det publika projektets `main`-gren och godkända pakettester på båda plattformarna.
 
 Appen kontrollerar den publika senaste stabila releasen. Vid start och var sjätte timme hämtas en ny verifierad version i bakgrunden. Den installeras när användaren avslutar CarCrow. Den nya appen kontrollerar att React-gränssnittet startar i ett dolt fönster och avslutas sedan; nästa vanliga start öppnar den nya versionen. Användaren kan även välja Installera nu i Inställningar → Uppdateringar. Avbrutna hämtningar installeras aldrig. Ett färdigt paket återanvänds efter omstart först sedan både aktuell GitHub-metadata och filens kontrollsumma verifierats igen. Hämtningen måste stämma med GitHubs SHA-256 och exakta filstorlek. Chattar, bevakningar och sparade bilar ligger i användarens separata datamapp. Mac installerar genom att byta appmapp och återställa den tidigare appen om den nya inte startar. Windows installerar med NSIS i samma installationsmapp.
 
