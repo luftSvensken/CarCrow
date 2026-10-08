@@ -14,7 +14,15 @@ AI använder **Nemotron 3 Super (free)** med **Nemotron 3 Ultra (free)** som res
 
 Mac-paketet har en ad-hoc-signatur som förseglar hela appens innehåll. Det är inte Apple-notariserat och saknar Developer ID-certifikat. Vid första öppningen kan macOS därför kräva Systeminställningar → Integritet och säkerhet → Öppna ändå. En varning om att utvecklaren inte kan verifieras är skild från en trasig kodsignatur. Windows kan visa SmartScreen för en osignerad app.
 
-## Nytt i 0.6
+## Nytt i 0.7
+
+- AI:n jämför flera sökspår och handplockar bilar utifrån dina önskemål, inom dina hårda krav.
+- Andra förslag, lägre miltal och bilfrågor fungerar direkt från urvalet.
+- Sortering behåller AI:ns valda bilar. Filter kan tas bort utan att gamla krav kommer tillbaka.
+- Kontantpriser skiljs från leasing, månadsbetalningar, insatser och bud. Originalen granskas före AI:ns slutliga urval.
+- Fler kandidater hämtas och sökningens täckning visas ärligt.
+
+## Tidigare i 0.6
 
 - Filter med sökbara märken och modeller, egna märken, pris- och milintervall, kaross, säljartyp, bilder, datum och datakällor. Sortering sker lokalt i den hämtade annonsgruppen.
 - Välj ort, sökradie och närmaste bilar. Valfri ungefärlig platsdelning är avstängd från början. AI:n får endast ortsnamnet och sökradien.

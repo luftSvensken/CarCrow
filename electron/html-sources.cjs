@@ -1,4 +1,5 @@
 const crypto=require('node:crypto');
+const {cashAmount,saleIssue}=require('./sale-quality.cjs');
 const {requestJSON}=require('./services.cjs');const {validateFilters,normalizeListing}=require('./core.cjs');
 function text(el){return el.text().replace(/\s+/g,' ').trim();}
 function digits(v){const n=Number(String(v).replace(/[^\d]/g,''));return Number.isFinite(n)?n:0;}
@@ -17,26 +18,28 @@ function parseBytbilDetail(html,url){
   const $=require('cheerio').load(html);const fields={};$('.object-info-box dt').each((_i,e)=>{fields[text($(e))]=text($(e).next('dd'));});
   const title=text($('.vehicle-detail-title').first());if(!title||!fields['Märke']||!fields['Modell'])throw new Error('Bytbils annonsformat har ändrats. Ingen data ändrades.');
   const fuel=fuelName(fields.Drivmedel,title);const gearbox=({'Automatisk':'Automat','Automat':'Automat','Manuell':'Manuell'})[fields['Växellåda']];
-  const priceText=$('.vehicle-detail-price').first().text();if(/\/\s*mån|per månad|privatleasing/i.test(priceText))return null;const price=digits(priceText);if(!fuel||!gearbox||!price||!fields.Miltal||/leasing|\/mån/i.test(title))return null;
+  const priceText=$('.vehicle-detail-price').first().text();if(/\/\s*mån|per månad|privatleasing/i.test(priceText))return null;const price=cashAmount(priceText.trim());if(!fuel||!gearbox||!price||!fields.Miltal)return null;
   const make=makeName(fields['Märke']),originalModel=fields['Modell'],model=modelName(make,originalModel);
   const variant=title.replace(new RegExp('^'+fields['Märke'].replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*'+originalModel.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*','i'),'');
   const images=[...new Set([...$('meta[property="og:image"]').toArray().map(e=>$(e).attr('content')),...$('.thumbnail-image img').toArray().map(e=>$(e).attr('src'))].filter(u=>u?.startsWith('https://')))].slice(0,40);
   const seller=text($('.dealer-contact-buttons h2 a').first())||text($('.vehicle-detail-dealer-headline a').first());
   const address=text($('.vehicle-detail-section-dealer-map a[href*="hitta.se"]').first());const city=address.includes(',')?address.split(',').at(-1).trim():'';
   const description=text($('.vehicle-detail-equipment-detail[style*="pre-line"]').first())||text($('.vehicle-description').first());
-  return {id:url.match(/-(\d+)$/)?.[1]||'',title,make,model,variant,comparisonVariant:make==='BMW'&&/^\d\d\d/.test(originalModel)?originalModel:variant.split(/\s+/).slice(0,2).join(' '),bodyType:fields.Karosseri||'',year:digits(fields['Årsmodell']),mileage:digits(fields.Miltal),fuel,gearbox,price,url,images,seller,city,sellerType:'dealer',registration:registration(fields.Regnr),description};
+  if(saleIssue({title,price,priceText,description}))return null;
+  return {id:url.match(/-(\d+)$/)?.[1]||'',title,make,model,variant,comparisonVariant:make==='BMW'&&/^\d\d\d/.test(originalModel)?originalModel:variant.split(/\s+/).slice(0,2).join(' '),bodyType:fields.Karosseri||'',year:digits(fields['Årsmodell']),mileage:digits(fields.Miltal),fuel,gearbox,price,priceText,url,images,seller,city,sellerType:'dealer',registration:registration(fields.Regnr),description};
 }
 function parseWaykeDetail(html,url){
   const $=require('cheerio').load(html),d=structuredCar($);if(!d)throw new Error('Waykes annonsformat har ändrats. Ingen data ändrades.');if(inactive(d))return {inactive:true};
   const fields={};$('dl dt').each((_i,e)=>{fields[text($(e))]=text($(e).next('dd'));});
   const hint=[d.name,d.vehicleConfiguration].filter(Boolean).join(' ');
   const fuel=fuelName(fields.Motortyp||'',hint)||fuelName(fields.Drivmedel||d.vehicleEngine?.fuelType||'',hint);
+  const offer=[d.offers].flat().find(o=>o&&o.priceCurrency==='SEK'&&cashAmount(o.price)&&!saleIssue({title:d.name,price:cashAmount(o.price),businessFunction:o.businessFunction,priceSpecification:o.priceSpecification}));if(!offer)return null;
   const gearbox=({'Automat':'Automat','Automatisk':'Automat','Manuell':'Manuell'})[fields['Växellåda']||d.vehicleTransmission];
   const od=d.mileageFromOdometer;const mileage=od?.unitCode==='KMT'?Math.round(Number(od.value)/10):null;
-  if(!fuel||!gearbox||mileage===null||d.offers?.priceCurrency!=='SEK')return null;
+  if(!fuel||!gearbox||mileage===null||offer.priceCurrency!=='SEK')return null;
   const make=makeName(d.brand?.name||''),model=modelName(make,String(d.model||'')),variant=String(d.vehicleConfiguration||'');
   const identities=Array.isArray(d.identifier)?d.identifier:[d.identifier].filter(Boolean);const plate=identities.find(x=>x.propertyID==='registrationNumber')?.value||fields.Registreringsnummer;
-  return {id:url.split('/objekt/')[1]?.split('?')[0]||'',title:d.name,make,model,variant,comparisonVariant:make==='BMW'&&/^\d{3}[deix]/i.test(variant)?variant.match(/^\d{3}[deix]+/i)[0]:variant.split(/\s+/).slice(0,2).join(' '),bodyType:fields.Kaross||d.bodyType||'',year:Number(d.vehicleModelDate),mileage,fuel,gearbox,price:Number(d.offers.price),url:d.url||url,images:(Array.isArray(d.image)?d.image:[d.image].filter(Boolean)).slice(0,40),seller:d.offers.seller?.name||fields['Säljare']||'',sellerType:'dealer',city:fields['Säljarens plats']||'',vin:vin(d.vehicleIdentificationNumber),registration:registration(plate),description:text($('[data-testid="item-v2-description"]').first()),publishedAt:d.offers.validFrom};
+  return {id:url.split('/objekt/')[1]?.split('?')[0]||'',title:d.name,make,model,variant,comparisonVariant:make==='BMW'&&/^\d{3}[deix]/i.test(variant)?variant.match(/^\d{3}[deix]+/i)[0]:variant.split(/\s+/).slice(0,2).join(' '),bodyType:fields.Kaross||d.bodyType||'',year:Number(d.vehicleModelDate),mileage,fuel,gearbox,price:cashAmount(offer.price),priceText:String(offer.price),businessFunction:offer.businessFunction,priceSpecification:offer.priceSpecification,url:d.url||url,images:(Array.isArray(d.image)?d.image:[d.image].filter(Boolean)).slice(0,40),seller:offer.seller?.name||fields['Säljare']||'',sellerType:'dealer',city:fields['Säljarens plats']||'',vin:vin(d.vehicleIdentificationNumber),registration:registration(plate),description:text($('[data-testid="item-v2-description"]').first()),publishedAt:offer.validFrom};
 }
 function parseDetail(id,html,url){if(id==='bilweb')throw new Error('Bilweb är borttaget.');const ad=id==='riddermark'?require('./dealer-sources.cjs').riddermarkDetail(html,url):id==='kvd'?require('./dealer-sources.cjs').parseKvdDetail(html,url):id==='wayke'?parseWaykeDetail(html,url):parseBytbilDetail(html,url);return ad&&!ad.inactive&&require('./sale-quality.cjs').saleIssue(ad)?null:ad;}
 function listLinks(html,id){if(id==='bilweb')return [];

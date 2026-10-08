@@ -3,14 +3,15 @@ const cheerio=require('cheerio');
 const {requestJSON}=require('./services.cjs');
 const {validateFilters,normalizeListing}=require('./core.cjs');
 const {buildURL,parseCar,originalDescription}=require('./blocket.cjs');
-const {saleIssue}=require('./sale-quality.cjs');
+const {saleIssue,cashSaleAssessment,cashAmount}=require('./sale-quality.cjs');
 const {listURL,listLinks,parseDetail}=require('./html-sources.cjs');
 const {cancelled}=require('./stream.cjs');
 const {riddermarkPage,riddermarkDetail,riddermarkURL,kvdPage,kvdURL}=require('./dealer-sources.cjs');
 const {correctQuery,terms}=require('./search-query.cjs');
 function sourceGroups(f,adapter){
  const queries=f.query?correctQuery(f.query).split(/\s+(?:eller|or)\s+/):[null];
- const models=f.models?.length?f.models:[null];
+ const models=adapter==='kvd-public'?[null]:f.models?.length?f.models:[null];
+ if(adapter==='kvd-public')queries.splice(0,queries.length,null);
  const {tokens,brandToken}=require('./brands.cjs');const known=(f.makes||[]).filter(m=>tokens.includes(brandToken(require('./search-query.cjs').normalize(m))));const unknown=(f.makes||[]).filter(m=>!known.includes(m));const makes=adapter==='blocket-public'?(f.makes?.length?[...(known.length?[known]:[]),...unknown.map(m=>[m])]:[[]]):(f.makes?.length?f.makes:[null]).map(make=>make?[make]:[]);
  return makes.flatMap(m=>models.flatMap(model=>queries.map(query=>({...f,makes:m,models:model?[model]:[],query:query||undefined}))));
 }
@@ -54,18 +55,18 @@ class Market {
       try{
         if(signal.aborted)throw cancelled();this.store.checkSource(source);
         onProgress({type:'source',source:source.name,status:'running',label:'Söker på '+source.name,page:cursor.page});
-        let ads=[],nextURL=null,total=null,signature,limited=false;
+        let ads=[],nextURL=null,total=null,signature,limited=false,pendingLinks=[],pageSize=cursor.pageSize||0;
         if(source.adapter==='blocket-public'){
           const r=await this.request(buildURL(scoped,cursor.page),{signal});if(!Array.isArray(r.docs))throw new Error('Källans sökformat har ändrats.');
           for(const d of r.docs)if(d.price?.amount<=100||d.sales_form!=null&&d.sales_form!==1||/(?:vi köper|köpes|köper din|privatleasing)/i.test(d.heading+' '+(d.model_specification||'')))this.store.excludeListing(source.id+':'+d.id);
           total=r.metadata?.result_size?.match_count??r.total??null;signature=r.docs.map(d=>String(d.id)).join(',');ads=r.docs.map(parseCar).filter(Boolean);
           const last=r.metadata?.paging?.last||Infinity,end=!r.docs.length||r.metadata?.is_end_of_paging||cursor.page>=last;
-          limited=Number.isFinite(last)&&total>last*r.docs.length;nextURL=end?null:buildURL(scoped,cursor.page+1);
+          pageSize=Math.max(pageSize,r.docs.length);limited=Number.isFinite(last)&&total>last*pageSize;nextURL=end?null:buildURL(scoped,cursor.page+1);
           // Preserve previously inspected descriptions when the search API omits them.
           ads=ads.map(ad=>{const old=this.store.rows('SELECT data FROM listings WHERE id=?',[source.id+':'+ad.id])[0];return old?{...JSON.parse(old.data),...ad,description:ad.description||JSON.parse(old.data).description}:ad;});
           // A very low advertised price on a recent car can be a lease payment.
           // Verify the seller's text; the price alone never excludes a real sale.
-          let inspectIndex=0;const suspicious=ads.filter(ad=>ad.year>=2018&&ad.price<15000&&!ad.description);
+          let inspectIndex=0;const suspicious=ads.filter(ad=>cashSaleAssessment(ad).needsVerification);
           await Promise.all(Array.from({length:Math.min(3,suspicious.length)},async()=>{while(inspectIndex<suspicious.length){const ad=suspicious[inspectIndex++];try{ad.description=originalDescription(await this.request(ad.url,{kind:'html',timeout:6000,signal}));}catch(e){if(e.name==='AbortError')throw e;}}}));
           ads=ads.filter(ad=>{if(!saleIssue(ad))return true;this.store.excludeListing(source.id+':'+ad.id);return false;});
         }else if(source.adapter==='kvd-public'){
@@ -73,9 +74,12 @@ class Market {
         }else if(source.adapter==='riddermark-public'){
           const url=riddermarkURL(scoped,cursor.page,make),html=await this.request(url,{kind:'html',signal});const parsed=riddermarkPage(html);ads=parsed.listings;signature=ads.map(x=>x.id).join(',');nextURL=parsed.count>=39?riddermarkURL(scoped,cursor.page+1,make):null;
         }else{
-          const url=cursor.nextURL||listURL(source.id,scoped,make);const html=await this.request(url,{kind:'html',signal});const links=listLinks(html,source.id);signature=links.join(',');
-          if(!links.length&&!/(?:0\s+(?:Personbilar|bilar|träffar|resultat|annonser)|Inga fordon matchade sökningen)/i.test(html))throw new Error('Annonslistan kunde inte läsas.');
-          nextURL=nextHTMLPage(html,source.id,url);
+          let links;if(cursor.pendingLinks?.length){links=cursor.pendingLinks;nextURL=cursor.nextURL;signature=cursor.signature;}else{
+            const url=cursor.nextURL||listURL(source.id,scoped,make),html=await this.request(url,{kind:'html',signal});links=listLinks(html,source.id);signature=links.join(',');
+            if(!links.length&&!/(?:0\s+(?:Personbilar|bilar|träffar|resultat|annonser)|Inga fordon matchade sökningen)/i.test(html))throw new Error('Annonslistan kunde inte läsas.');
+            nextURL=nextHTMLPage(html,source.id,url);
+          }
+          pendingLinks=links.slice(12);links=links.slice(0,12);
           let index=0,completed=0;const failures=[];
           const workers=await Promise.allSettled(Array.from({length:Math.min(3,links.length)},async()=>{
             while(index<links.length){
@@ -88,14 +92,14 @@ class Market {
           if(signal.aborted||workers.some(r=>r.status==='rejected'&&r.reason.name==='AbortError'))throw cancelled();
           if(failures.length===links.length&&links.length)throw new Error(failures[0]);
         }
-        if(signal.aborted)throw cancelled();if(signature&&signature===cursor.signature)nextURL=null;
+        if(signal.aborted)throw cancelled();if(!cursor.pendingLinks?.length&&signature&&signature===cursor.signature)nextURL=null;
         const valid=ads.filter(ad=>{try{normalizeListing(ad,source);return true;}catch{return false;}});
         if(['blocket-public','riddermark-public','kvd-public'].includes(source.adapter)){this.store.importSnapshot(source,{schemaVersion:1,complete:false,listings:valid});onBatch(imported(source,valid),source.adapter==='blocket-public'&&terms(f.query||'').length>0);}
-        const groupNext={...cursor,page:cursor.page+1,nextURL,signature,total:total??cursor.total,pages:cursor.pages+1,received:cursor.received+valid.length,error:null,limited,done:!nextURL};
+        const groupNext={...cursor,page:cursor.page+(pendingLinks.length?0:1),pendingLinks,pageSize,nextURL,signature,total:total??cursor.total,pages:cursor.pages+1,received:cursor.received+valid.length,error:null,limited:limited||cursor.limited,done:!nextURL&&!pendingLinks.length};
         const cursors={...(previous.groups||{}),[group]:groupNext};
         const next={...groupNext,group:(group+1)%groups.length,groups:cursors,
           pages:Object.values(cursors).reduce((n,c)=>n+c.pages,0),received:Object.values(cursors).reduce((n,c)=>n+c.received,0),
-          done:groups.every((_,i)=>cursors[i]?.done),total:groups.every((_,i)=>Number.isFinite(cursors[i]?.total))?Object.values(cursors).reduce((n,c)=>n+c.total,0):null};
+          limited:Object.values(cursors).some(c=>c.limited),done:groups.every((_,i)=>cursors[i]?.done),total:groups.every((_,i)=>Number.isFinite(cursors[i]?.total))?Object.values(cursors).reduce((n,c)=>n+c.total,0):null};
         state.sources[source.id]=next;if(!fresh&&!session)this.store.setSetting(key,state);this.store.sourceStatus(source.id,null,true);
         onProgress({type:'source',source:source.name,status:'done',label:source.name+' · '+valid.length+' annonser',received:valid.length,page:cursor.page});
         const listingIds=valid.map(ad=>source.id+':'+ad.id);
@@ -118,7 +122,7 @@ class Market {
         if(source.adapter==='blocket-public'){
           const r=await this.request('https://blocket-api.se/v1/ad/car?id='+encodeURIComponent(old.id),{signal});
           if(String(r.ad_id)!==String(old.id)||!r.title||!r.price)throw new Error('Originalannonsen kunde inte verifieras.');
-          const price=Number(String(r.price).replace(/[^0-9]/g,''));ad={...old,title:r.title,price:price>0?price:old.price,description:r.equipment?.length?'Utrustning enligt annonsen:\n'+r.equipment.join(' · '):old.description};
+          const price=cashAmount(r.price);if(!price){this.store.excludeListing(offer.id);checks.push({source:source.name,status:'excluded',error:'Originalet saknar ett tydligt kontantpris.'});continue;}ad={...old,title:r.title,price,priceText:String(r.price),description:r.equipment?.length?'Utrustning enligt annonsen:\n'+r.equipment.join(' · '):old.description};
           try{const description=originalDescription(await this.request(old.url,{kind:'html',signal}));if(description)ad.description=[description,r.equipment?.length?'Utrustning enligt annonsen: '+r.equipment.join(' · '):''].filter(Boolean).join('\n');}catch(e){if(e.name==='AbortError')throw e;checks.push({source:source.name,status:'partial',error:'Säljarens beskrivning kunde inte läsas: '+e.message});}
         }else if(source.adapter==='riddermark-public'){
           ad=riddermarkDetail(await this.request(old.url,{kind:'html',signal}),old.url);if(!ad)throw new Error('Originalannonsen saknar ett aktivt försäljningspris.');

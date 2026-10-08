@@ -44,3 +44,11 @@
 .selection-reason{display:block;color:var(--accent);font-size:12px;line-height:1.5;margin-bottom:8px}.web-ad-label{font-size:11px;color:var(--muted);margin-top:4px}
 
 .history-dialog .chat-search .icon-button{width:22px;height:24px;padding:2px;flex-shrink:0;display:grid;place-items:center}
+
+/* Keep the current search and its constraints visible while new sources arrive. */
+.constraint-chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0;margin-bottom:12px;flex-shrink:0;max-height:96px;overflow:auto;padding:3px}
+.constraint-chips button{display:inline-flex;align-items:center;gap:7px;max-width:100%;padding:6px 9px;border-radius:8px;background:var(--accent-soft);color:var(--accent-text);font-size:11px;text-align:left;line-height:1.4;overflow-wrap:anywhere}
+.constraint-chips button:hover{background:var(--hover)}.applied-filters .constraint-chips{margin:0;flex:1}.applied-filters{align-items:flex-start}
+.search-status{display:flex;align-items:center;gap:8px;min-height:33px;margin:0 0 10px;color:var(--muted);font-size:12px;line-height:1.5;flex-shrink:0}.search-status span{flex:1}.search-status button{color:var(--accent-text);font-size:11px;padding:6px 0;white-space:nowrap}
+.shortlist-actions{display:flex;align-items:center;flex-wrap:wrap;gap:7px;padding:12px 0 16px;border-top:1px solid var(--line);flex-shrink:0}.shortlist-actions button{display:flex;align-items:center;gap:6px;font-size:11px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px}.shortlist-actions button:hover{background:var(--accent-soft);color:var(--accent-text)}
+.empty-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:400px;margin-top:8px}.empty-actions .button{font-size:12px}.composer-context{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:11px;text-align:left;padding:0 4px 9px}.composer-context>span{color:var(--muted);margin-right:3px}.composer-context button{display:flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--panel);border-radius:7px;padding:6px 8px;max-width:100%;overflow-wrap:anywhere}.detail-ai-actions{display:grid;gap:8px;margin-top:9px}.selection-bar{flex-wrap:wrap}.selection-bar strong{min-width:65px}

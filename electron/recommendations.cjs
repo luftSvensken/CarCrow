@@ -8,7 +8,7 @@ function profileSignals(store,demo=false){
  const saved=store.search({},demo,0,true).items;
  const events=store.rows('SELECT kind,data,at FROM preference_events ORDER BY id DESC LIMIT 60').map(r=>({...r,data:JSON.parse(r.data)}));
  const recentSearch=events.find(e=>e.kind==='search'),recentChat=chats.find(c=>Object.keys(c.filters||{}).some(k=>k!=='sort'));
- const chatFilters=recentChat?require('./search-intent.cjs').userIntent(recentChat.messages?.filter(m=>m.role==='user').map(m=>m.text)||[],recentChat.userFilters||{},store.facets(demo).models):{};
+ const chatFilters=recentChat?(recentChat.hardFilters||require('./search-intent.cjs').userIntent(recentChat.messages?.filter(m=>m.role==='user').slice(recentChat.intentStart||0).filter(m=>!m.contextualQuestion).map(m=>m.intentText??m.text)||[],recentChat.userFilters||{},store.facets(demo).models)):{};
  const filters=recentSearch&&(!recentChat||recentSearch.at>recentChat.updated)?recentSearch.data.filters:chatFilters;
  const groups=[
   {kind:'chattar',weight:.35,text:chats.map(c=>c.messages?.filter(m=>m.role==='user').slice(-4).map(m=>m.text).join('\n')).filter(Boolean).join('\n')},

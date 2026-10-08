@@ -1,6 +1,7 @@
 const crypto=require('node:crypto'),cheerio=require('cheerio');
 const {requestJSON}=require('./services.cjs');
 const {normalizeListing,httpsURL}=require('./core.cjs');
+const {cashAmount,saleIssue}=require('./sale-quality.cjs');
 const {normalize,makes}=require('./search-query.cjs');
 const text=v=>String(v??'').replace(/\s+/g,' ').trim();
 const name=v=>typeof v==='string'?v:text(v?.name);
@@ -12,10 +13,10 @@ function parseWebListing(html,url){
  const nodes=[];const walk=value=>{if(Array.isArray(value))return value.forEach(walk);if(!value||typeof value!=='object')return;nodes.push(value);if(value['@graph'])walk(value['@graph']);};
  $('script[type="application/ld+json"]').each((_i,e)=>{try{walk(JSON.parse($(e).text()));}catch{}});
  const cars=nodes.filter(d=>[d['@type']].flat().some(t=>['Car','Vehicle','Product'].includes(t))&&d.offers);
- if(cars.length!==1)return null;const d=cars[0];if(![d['@type']].flat().some(t=>['Car','Vehicle'].includes(t))&&!d.vehicleModelDate&&!d.mileageFromOdometer&&!d.vehicleTransmission)return null;const offer=Array.isArray(d.offers)?d.offers[0]:d.offers;
+ if(cars.length!==1)return null;const d=cars[0];if(![d['@type']].flat().some(t=>['Car','Vehicle'].includes(t))&&!d.vehicleModelDate&&!d.mileageFromOdometer&&!d.vehicleTransmission)return null;const offer=[d.offers].flat().find(o=>o&&o['@type']!=='AggregateOffer'&&o.priceCurrency==='SEK'&&cashAmount(o.price??o.priceSpecification?.price)&&!saleIssue({price:cashAmount(o.price??o.priceSpecification?.price),businessFunction:o.businessFunction,priceSpecification:o.priceSpecification,priceText:String(o.price??o.priceSpecification?.price)}));
  if(!offer||offer.priceCurrency!=='SEK'||/SoldOut|OutOfStock|Discontinued/i.test(offer.availability||''))return null;
  const price=numeric(offer.price??offer.priceSpecification?.price),title=text(d.name||$('h1').first().text());
- if(!Number.isInteger(price)||price<=100||!title||/leasing|\/(?:\s*mån)|per månad|vi köper|köpes/i.test(title+' '+text(offer.description)+' '+text(offer.priceSpecification?.unitText)))return null;
+ if(!Number.isInteger(price)||price<=100||!title||/\/(?:\s*mån)|per månad|vi köper|köpes/i.test(title+' '+text(offer.description)+' '+text(offer.priceSpecification?.unitText)))return null;
  const fields={};for(const prop of [d.additionalProperty||[]].flat())if(prop?.name)fields[normalize(prop.name)]=prop.value;
  $('dt').each((_i,e)=>{fields[normalize($(e).text())]=text($(e).next('dd').text());});$('tr').each((_i,e)=>{const cells=$(e).find('th,td');if(cells.length===2)fields[normalize(cells.eq(0).text())]=text(cells.eq(1).text());});
  let make=name(d.brand)||text(fields.marke),model=name(d.model)||text(fields.modell);
@@ -33,8 +34,8 @@ function parseWebListing(html,url){
  const seller=[offer.seller||d.seller].flat()[0],city=text(seller?.address?.addressLocality||d.address?.addressLocality||fields.ort||fields.plats);
  $('script,style,nav,header,footer,aside').remove();const equipment=[d.additionalProperty||[]].flat().filter(p=>/^(?:equipment|utrustning)$/i.test(p?.name||'')).map(p=>text(p.value)).filter(Boolean);const description=[text(d.description||$('main').text()),equipment.length?'Utrustning enligt annonsen: '+equipment.join(' · '):''].filter(Boolean).join('\n').slice(0,6000);
  const identities=[d.identifier||[]].flat();const vin=text(d.vehicleIdentificationNumber),plate=text(fields.regnr||fields.registreringsnummer||fields.registrationnumber||identities.find(i=>i.propertyID==='registrationNumber')?.value).replace(/[ -]/g,'').toUpperCase();
- if(require('./sale-quality.cjs').saleIssue({title,price,description}))return null;
- return {id:crypto.createHash('sha256').update(u.href).digest('hex').slice(0,32),title,make,model,price,year,mileage,fuel,gearbox,url:u.href,city,seller:name(seller),sellerType:seller&&/Organization|AutoDealer/.test(seller['@type']||'')?'dealer':undefined,variant:text(d.vehicleConfiguration),bodyType:text(d.bodyType||fields.kaross),description,images,webDiscovered:true,webSourceName:text(seller?.name)||u.hostname.replace(/^www\./,''),verifiedAt:new Date().toISOString(),vin:/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)?vin:undefined,registration:/^[A-Z0-9]{6,10}$/.test(plate)?plate:undefined};
+ if(require('./sale-quality.cjs').saleIssue({title,price,description,businessFunction:offer.businessFunction,priceSpecification:offer.priceSpecification}))return null;
+ return {id:crypto.createHash('sha256').update(u.href).digest('hex').slice(0,32),title,make,model,price,priceText:String(offer.price??offer.priceSpecification?.price),businessFunction:offer.businessFunction,priceSpecification:offer.priceSpecification,year,mileage,fuel,gearbox,url:u.href,city,seller:name(seller),sellerType:seller&&/Organization|AutoDealer/.test(seller['@type']||'')?'dealer':undefined,variant:text(d.vehicleConfiguration),bodyType:text(d.bodyType||fields.kaross),description,images,webDiscovered:true,webSourceName:text(seller?.name)||u.hostname.replace(/^www\./,''),verifiedAt:new Date().toISOString(),vin:/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)?vin:undefined,registration:/^[A-Z0-9]{6,10}$/.test(plate)?plate:undefined};
 }
 function listingLinks(html,url){
  const $=cheerio.load(html),origin=new URL(url).origin;const links=[];
