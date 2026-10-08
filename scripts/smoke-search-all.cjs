@@ -1,0 +1,23 @@
+const {_electron:electron}=require('playwright');
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
+const {Store}=require('../electron/core.cjs'),{CarAgent}=require('../electron/agent.cjs');
+
+(async()=>{
+ const data=fs.mkdtempSync(path.join(os.tmpdir(),'carcrow-all-matches-')),output=process.env.CARCROW_SCREENSHOTS||path.resolve('test-results/search-all');fs.mkdirSync(output,{recursive:true});
+ const report={version:require('../package.json').version,checks:[],status:'running'};let app,page;
+ const check=name=>{report.checks.push(name);console.log(name);};
+ try{
+  const s=await Store.create(path.join(data,'carcrow.sqlite')),source={id:'demo-all',name:'Syntetiska testannonser',demo:true,enabled:true,mediaAllowed:false};s.setSource(source);
+  s.importSnapshot(source,{schemaVersion:1,complete:false,listings:Array.from({length:100},(_,i)=>({id:String(i),title:'Honda Jazz test '+i,make:'Honda',model:'Jazz',variant:'Test '+i,price:55000+i,year:2012,mileage:14000+i,fuel:'Bensin',gearbox:'Manuell',bodyType:'Halvkombi',description:'Syntetisk annons för gränssnittstest. Ingen bil till salu.',url:'https://example.com/test/'+i,images:[]}))});
+  const first=s.search({sort:'priceAsc'},true),cars=[...first.items,...s.search({sort:'priceAsc'},true,1).items,...s.search({sort:'priceAsc'},true,2).items],prioritized=cars.slice(0,3).map(c=>({...c,selectionReason:'Inom din budget.'}));
+  const a=new CarAgent({store:s,demo:()=>true,key:()=>null,emit:()=>{}});a.save({id:'all-matches',title:'Alla mina matchningar',messages:[{id:'u',role:'user',text:'Honda Jazz max 60000 kr'},{id:'a',role:'assistant',text:'De prioriterade bilarna ligger först. Alla matchningar visas.',status:'done'}],context:[],cars:[...prioritized,...cars.slice(3,48)],searchCars:cars,prioritizedIds:prioritized.map(c=>c.id),filters:{maxPrice:60000},hardFilters:{maxPrice:60000},hasMore:true});s.db.close();
+  app=await electron.launch({...process.env.CARCROW_EXECUTABLE?{executablePath:process.env.CARCROW_EXECUTABLE,args:[]}:{args:['.']},cwd:process.cwd(),env:{...process.env,CARCROW_DATA_DIR:data,CARCROW_TEST_DEMO:'1'},timeout:90000});page=await app.firstWindow();await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setContentSize(1400,900));const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.getByRole('heading',{name:'Vilken bil spanar du efter?'}).waitFor();await page.getByRole('button',{name:'Alla mina matchningar',exact:true}).filter({visible:true}).click();await page.getByText('48 hämtade matchningar',{exact:false}).waitFor();
+  await page.locator('.results-scroll').evaluate(el=>el.scrollTop=el.scrollHeight);await page.getByText('100 hämtade matchningar',{exact:false}).waitFor();const persisted=(await page.evaluate(()=>window.carcrow.call('chat',{id:'all-matches'}))).data;
+  assert.equal(persisted.cars.length,100);assert.equal(persisted.cars.filter(c=>c.selectionReason).length,3);assert.equal(persisted.hasMore,false);check('scrolling in the chat retrieves and persists all 100 cards through the real IPC action');
+  await page.getByRole('combobox',{name:'Sortera annonser'}).selectOption('priceDesc');await page.locator('.results-scroll').evaluate(el=>el.scrollTop=0);await page.getByText('Test 99 · Halvkombi',{exact:true}).waitFor();check('sorting reaches a card beyond the original page and beyond the three AI priorities');
+  await page.evaluate(async()=>Promise.all(document.getAnimations().filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{}))));await page.screenshot({path:path.join(output,'03-all-matches-wide.png')});await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setContentSize(740,820));await page.getByRole('button',{name:'Bilar (100)',exact:true}).click();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.evaluate(async()=>Promise.all(document.getAnimations().filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{}))));await page.screenshot({path:path.join(output,'04-all-matches-narrow.png')});check('all-match counts and result navigation fit narrow screens');
+  assert.deepEqual(errors,[]);report.status='passed';
+ }catch(e){report.status='failed';report.error=e.message;if(page)await page.screenshot({path:path.join(output,'failure-all-matches.png')}).catch(()=>{});throw e;}
+ finally{fs.writeFileSync(path.join(output,'report-all-matches.json'),JSON.stringify(report,null,2));if(app){await app.evaluate(({app})=>app.quit()).catch(()=>{});await app.close().catch(()=>{});}fs.rmSync(data,{recursive:true,force:true});}
+})().catch(e=>{console.error(e.message);process.exitCode=1;});

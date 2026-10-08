@@ -102,6 +102,7 @@ jobs:
           node scripts/smoke.cjs
           node scripts/smoke06.cjs
           node scripts/smoke07.cjs
+          node scripts/smoke-search-all.cjs
       - name: Archive Mac app
         env:
           TARGET_ARCH: ${{ matrix.arch }}

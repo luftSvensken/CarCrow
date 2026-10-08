@@ -22,6 +22,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Den första gränssnittskontrollen misslyckade
 node scripts/smoke06.cjs
   if ($LASTEXITCODE -ne 0) { throw "CarCrow 0.6 UI checks failed" }
   node scripts/smoke07.cjs
+  if ($LASTEXITCODE -ne 0) { throw 'Search UX acceptance failed' }
+  node scripts/smoke-search-all.cjs
 if ($LASTEXITCODE -ne 0) { throw 'Gränssnittskontrollen av det portabla paketet misslyckades' }
 if ($InstallOnEphemeralRunner) {
     $installDirectory = Join-Path $env:RUNNER_TEMP ('carcrow-install-' + [guid]::NewGuid().ToString('N'))
@@ -41,6 +43,8 @@ if ($InstallOnEphemeralRunner) {
     node scripts/smoke06.cjs
   if ($LASTEXITCODE -ne 0) { throw "CarCrow 0.6 UI checks failed" }
   node scripts/smoke07.cjs
+  if ($LASTEXITCODE -ne 0) { throw 'Installed search UX acceptance failed' }
+  node scripts/smoke-search-all.cjs
     if ($LASTEXITCODE -ne 0) { throw 'Gränssnittskontrollen av den installerade appen misslyckades' }
     $env:CARCROW_AUTOMATIC_UPDATE = '1'
     node scripts/update-install.cjs

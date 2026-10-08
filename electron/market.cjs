@@ -84,7 +84,7 @@ class Market {
           const workers=await Promise.allSettled(Array.from({length:Math.min(3,links.length)},async()=>{
             while(index<links.length){
               if(signal.aborted)throw cancelled();const detailURL=links[index++];
-              try{const body=await this.request(detailURL,{kind:'html',signal}),ad=parseDetail(source.id,body,detailURL);if(ad&&!ad.inactive){normalizeListing(ad,source);ads.push(ad);this.store.importSnapshot(source,{schemaVersion:1,complete:false,listings:[ad]});onBatch(imported(source,[ad]));}}
+              try{const body=await this.request(detailURL,{kind:'html',signal}),ad=parseDetail(source.id,body,detailURL);if(ad?.excluded)this.store.excludeListing(source.id+':'+ad.id);else if(ad&&!ad.inactive){normalizeListing(ad,source);ads.push(ad);this.store.importSnapshot(source,{schemaVersion:1,complete:false,listings:[ad]});onBatch(imported(source,[ad]));}}
               catch(e){if(e.name==='AbortError')throw e;if(e.status!==404&&e.status!==410)failures.push(e.message);}
               completed++;onProgress({type:'source',source:source.name,status:'running',label:source.name+' · '+completed+'/'+links.length+' annonser',page:cursor.page,received:ads.length});
             }
@@ -127,7 +127,7 @@ class Market {
         }else if(source.adapter==='riddermark-public'){
           ad=riddermarkDetail(await this.request(old.url,{kind:'html',signal}),old.url);if(!ad)throw new Error('Originalannonsen saknar ett aktivt försäljningspris.');
         }else if(source.webVerified){ad=require('./web-listings.cjs').parseWebListing(await this.request(old.url,{kind:'html',signal}),old.url);if(!ad)throw new Error('Webbannonsen kunde inte verifieras på nytt.');}else ad=parseDetail(source.id,await this.request(old.url,{kind:'html',signal}),old.url);
-        if(ad&&saleIssue(ad)){this.store.excludeListing(offer.id);checks.push({source:source.name,status:'excluded',error:saleIssue(ad)});continue;}
+        if(ad?.excluded||ad&&saleIssue(ad)){this.store.excludeListing(offer.id);checks.push({source:source.name,status:'excluded',error:ad.exclusionReason||saleIssue(ad)});continue;}
         if(ad?.inactive)this.store.removeListing(offer.id);else if(ad)this.store.importSnapshot(source,{schemaVersion:1,complete:false,listings:[{...ad,publishedAt:old.publishedDateKnown===false?undefined:old.publishedAt}]});else throw new Error('Originalannonsen saknar verifierbara biluppgifter.');
         checks.push({source:source.name,status:ad.inactive?'removed':'verified'});onProgress({type:'source',source:source.name,status:'done',label:source.name+' · annonsen läst'});
       }catch(e){if(e.name==='AbortError')throw e;if(e.status===404||e.status===410){this.store.removeListing(offer.id);checks.push({source:source.name,status:'removed'});}else checks.push({source:source.name,status:'error',error:e.message});onProgress({type:'source',source:source.name,status:'error',label:source.name+' · annonsen kunde inte verifieras'});}
