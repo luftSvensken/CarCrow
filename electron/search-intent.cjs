@@ -38,8 +38,8 @@ function userIntent(texts,ui={},facets=[]){
   if(/(?:miltal spelar ingen roll|ingen milgräns)/i.test(text)){delete out.maxMileage;delete out.minMileage;}
   if(/(?:årsmodell spelar ingen roll|alla årsmodeller)/i.test(text)){delete out.minYear;delete out.maxYear;}
   const negative=normalize(text),rejectedModels=(out.models||[]).filter(m=>new RegExp('(?:inte(?: ha)?|ingen|inga|utom) '+normalize(m)+'\\b').test(negative));if(rejectedModels.length){out.models=out.models.filter(m=>!rejectedModels.includes(m));if(!out.models.length)delete out.models;}
-  if(brands.length){out.makes=brands;delete out.models;}
-  if(models.length)out.models=models;
+  if(brands.length){if(JSON.stringify(brands)!==JSON.stringify(out.makes))delete out.query;out.makes=brands;delete out.models;}
+  if(models.length){if(JSON.stringify(models)!==JSON.stringify(out.models))delete out.query;out.models=models;}
   const specifics=text.match(/\b(?:business(?: edition)?|summum|momentum|inscription|dragkrok|panoramatak|skinn|m[- ]sport|r[- ]design)\b/gi);if(specifics?.length)out.query=specifics.join(' ');
   Object.assign(out,explicitBounds(text));
   if(!/manuell eller automat|automat eller manuell|växellåda spelar ingen roll/i.test(text)&&/\bautomat(?:isk)?\b/i.test(text))out.gearbox='Automat';else if(!/manuell eller automat|automat eller manuell|växellåda spelar ingen roll/i.test(text)&&/\bmanuell\b/i.test(text))out.gearbox='Manuell';
