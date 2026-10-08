@@ -1,4 +1,14 @@
-# Verifiering av CarCrow 0.7
+# Verifiering av CarCrow 0.7.1
+
+Lokalt kontrollerad 8 oktober 2026. 145 data- och agenttester passerar på Mac; ett ytterligare plattformstest körs på Windows. Regressionsfallen omfattar månadsannonser som tidigare låg kvar i cachen, jämnt fördelade sökspår, återval av märken och prisändringar under AI-granskningen.
+
+Tre AI-prioriteringar behåller alla 100 hämtade matchningar i testet. Fortsatt hämtning tar listan från 50 till 100 och 102 annonser utan ytterligare AI-anrop. Gränssnittstestet `scripts/smoke-search-all.cjs` verifierar verklig IPC-hämtning, sparad chatt med 100 kort, sortering utanför det första urvalet samt bred och smal layout. Kontrollerna ingår i båda plattformarnas publiceringsflöden.
+
+Det senaste testet med riktiga Blocket-annonser och gratis-AI gav 149 matchningar för en första bil med maxbudget 60 000 kr. Tre prioriterades först; övriga visas också och fler sidor kan hämtas. Påståenden om skick, service och driftskostnad kontrolleras mot annonsunderlaget. Antal och svarstid varierar med annonser, nätverk och modellens tillgänglighet.
+
+Mac-uppdateraren flyttar det verifierade appaketet inom samma disk och har reservkopiering när installationen ligger på en annan disk. Tester verifierar bevarade filer och att en misslyckad reservkopiering städas bort utan att ändra den fungerande appen.
+
+# Tidigare verifiering av CarCrow 0.7
 
 `npm test` omfattar samtalsändringar, bilurval, betalningsformer, fortsatta sökspår och migrationsskydd. `scripts/smoke07.cjs` verifierar sortering av AI-urval, bilfrågor, liknande bilar, borttagna filter samt bred och smal layout med en separat profil. Windows och Mac-paketen kör dessa kontroller före publicering.
 

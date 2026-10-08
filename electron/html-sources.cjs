@@ -9,6 +9,7 @@ function vin(v){v=String(v||'').toUpperCase();return /^[A-HJ-NPR-Z0-9]{17}$/.tes
 function structuredCar($){let car;$('script[type="application/ld+json"]').each((_i,e)=>{try{const v=JSON.parse($(e).text()),values=Array.isArray(v)?v:[v,...(v['@graph']||[])];const found=values.find(x=>x['@type']==='Car'||Array.isArray(x['@type'])&&x['@type'].includes('Car'));if(found)car=found;}catch{}});return car;}
 function inactive(d){return /^https:\/\/schema\.org\/(SoldOut|OutOfStock|Discontinued)$/.test(d?.offers?.availability||'');}
 function modelName(make,v){if(make==='BMW'&&/^[1-8]\d\d[deix]/i.test(v))return v[0]+'-serie';return make==='BMW'?v.replace(/-serien$/i,'-serie'):v;}
+function excludedOffer(id,url,reason){return {id,url,excluded:true,exclusionReason:reason};}
 function fuelName(v,title=''){
   if(require('./fuel.cjs').isPlugInHybrid(v,title))return 'Laddhybrid';
   if(/hybrid/i.test(v))return 'Hybrid';
@@ -18,14 +19,14 @@ function parseBytbilDetail(html,url){
   const $=require('cheerio').load(html);const fields={};$('.object-info-box dt').each((_i,e)=>{fields[text($(e))]=text($(e).next('dd'));});
   const title=text($('.vehicle-detail-title').first());if(!title||!fields['Märke']||!fields['Modell'])throw new Error('Bytbils annonsformat har ändrats. Ingen data ändrades.');
   const fuel=fuelName(fields.Drivmedel,title);const gearbox=({'Automatisk':'Automat','Automat':'Automat','Manuell':'Manuell'})[fields['Växellåda']];
-  const priceText=$('.vehicle-detail-price').first().text();if(/\/\s*mån|per månad|privatleasing/i.test(priceText))return null;const price=cashAmount(priceText.trim());if(!fuel||!gearbox||!price||!fields.Miltal)return null;
+  const priceText=$('.vehicle-detail-price').first().text(),id=url.match(/-(\d+)$/)?.[1]||'';if(/\/\s*mån|per månad|privatleasing/i.test(priceText))return excludedOffer(id,url,'Månadspris eller leasing, inte bilens kontantpris.');const price=cashAmount(priceText.trim());if(!fuel||!gearbox||!price||!fields.Miltal)return null;
   const make=makeName(fields['Märke']),originalModel=fields['Modell'],model=modelName(make,originalModel);
   const variant=title.replace(new RegExp('^'+fields['Märke'].replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*'+originalModel.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*','i'),'');
   const images=[...new Set([...$('meta[property="og:image"]').toArray().map(e=>$(e).attr('content')),...$('.thumbnail-image img').toArray().map(e=>$(e).attr('src'))].filter(u=>u?.startsWith('https://')))].slice(0,40);
   const seller=text($('.dealer-contact-buttons h2 a').first())||text($('.vehicle-detail-dealer-headline a').first());
   const address=text($('.vehicle-detail-section-dealer-map a[href*="hitta.se"]').first());const city=address.includes(',')?address.split(',').at(-1).trim():'';
   const description=text($('.vehicle-detail-equipment-detail[style*="pre-line"]').first())||text($('.vehicle-description').first());
-  if(saleIssue({title,price,priceText,description}))return null;
+  const issue=saleIssue({title,price,priceText,description});if(issue)return excludedOffer(id,url,issue);
   return {id:url.match(/-(\d+)$/)?.[1]||'',title,make,model,variant,comparisonVariant:make==='BMW'&&/^\d\d\d/.test(originalModel)?originalModel:variant.split(/\s+/).slice(0,2).join(' '),bodyType:fields.Karosseri||'',year:digits(fields['Årsmodell']),mileage:digits(fields.Miltal),fuel,gearbox,price,priceText,url,images,seller,city,sellerType:'dealer',registration:registration(fields.Regnr),description};
 }
 function parseWaykeDetail(html,url){
@@ -33,7 +34,8 @@ function parseWaykeDetail(html,url){
   const fields={};$('dl dt').each((_i,e)=>{fields[text($(e))]=text($(e).next('dd'));});
   const hint=[d.name,d.vehicleConfiguration].filter(Boolean).join(' ');
   const fuel=fuelName(fields.Motortyp||'',hint)||fuelName(fields.Drivmedel||d.vehicleEngine?.fuelType||'',hint);
-  const offer=[d.offers].flat().find(o=>o&&o.priceCurrency==='SEK'&&cashAmount(o.price)&&!saleIssue({title:d.name,price:cashAmount(o.price),businessFunction:o.businessFunction,priceSpecification:o.priceSpecification}));if(!offer)return null;
+  const offers=[d.offers].flat().filter(o=>o&&o.priceCurrency==='SEK'&&cashAmount(o.price)),assess=o=>saleIssue({title:d.name,price:cashAmount(o.price),businessFunction:o.businessFunction,priceSpecification:o.priceSpecification});
+  const offer=offers.find(o=>!assess(o));if(!offer){const rejected=offers.find(o=>assess(o));return rejected?excludedOffer(url.split('/objekt/')[1]?.split('?')[0]||'',url,assess(rejected)):null;}
   const gearbox=({'Automat':'Automat','Automatisk':'Automat','Manuell':'Manuell'})[fields['Växellåda']||d.vehicleTransmission];
   const od=d.mileageFromOdometer;const mileage=od?.unitCode==='KMT'?Math.round(Number(od.value)/10):null;
   if(!fuel||!gearbox||mileage===null||offer.priceCurrency!=='SEK')return null;
@@ -41,7 +43,7 @@ function parseWaykeDetail(html,url){
   const identities=Array.isArray(d.identifier)?d.identifier:[d.identifier].filter(Boolean);const plate=identities.find(x=>x.propertyID==='registrationNumber')?.value||fields.Registreringsnummer;
   return {id:url.split('/objekt/')[1]?.split('?')[0]||'',title:d.name,make,model,variant,comparisonVariant:make==='BMW'&&/^\d{3}[deix]/i.test(variant)?variant.match(/^\d{3}[deix]+/i)[0]:variant.split(/\s+/).slice(0,2).join(' '),bodyType:fields.Kaross||d.bodyType||'',year:Number(d.vehicleModelDate),mileage,fuel,gearbox,price:cashAmount(offer.price),priceText:String(offer.price),businessFunction:offer.businessFunction,priceSpecification:offer.priceSpecification,url:d.url||url,images:(Array.isArray(d.image)?d.image:[d.image].filter(Boolean)).slice(0,40),seller:offer.seller?.name||fields['Säljare']||'',sellerType:'dealer',city:fields['Säljarens plats']||'',vin:vin(d.vehicleIdentificationNumber),registration:registration(plate),description:text($('[data-testid="item-v2-description"]').first()),publishedAt:offer.validFrom};
 }
-function parseDetail(id,html,url){if(id==='bilweb')throw new Error('Bilweb är borttaget.');const ad=id==='riddermark'?require('./dealer-sources.cjs').riddermarkDetail(html,url):id==='kvd'?require('./dealer-sources.cjs').parseKvdDetail(html,url):id==='wayke'?parseWaykeDetail(html,url):parseBytbilDetail(html,url);return ad&&!ad.inactive&&require('./sale-quality.cjs').saleIssue(ad)?null:ad;}
+function parseDetail(id,html,url){if(id==='bilweb')throw new Error('Bilweb är borttaget.');const ad=id==='riddermark'?require('./dealer-sources.cjs').riddermarkDetail(html,url):id==='kvd'?require('./dealer-sources.cjs').parseKvdDetail(html,url):id==='wayke'?parseWaykeDetail(html,url):parseBytbilDetail(html,url);if(ad&&!ad.inactive&&!ad.excluded){const issue=saleIssue(ad);if(issue)return excludedOffer(ad.id,url,issue);}return ad;}
 function listLinks(html,id){if(id==='bilweb')return [];
   const $=require('cheerio').load(html),base=id==='wayke'?'https://www.wayke.se':'https://www.bytbil.com';
   if(id==='kvd')return [...new Set($('a[href^="/auktioner/"]').toArray().map(e=>new URL($(e).attr('href'),'https://www.kvd.se').href))];
@@ -77,12 +79,12 @@ async function fetchHTMLSource(store,source,filters={}, {request=requestJSON,for
   }
   const links=new Set();for(let i=0;i<24;i++)for(const group of groups)if(group[i])links.add(group[i]);
   const listings=[];let skipped=0;const selected=[...links].slice(0,maxDetails);
-  for(const url of selected){const html=await request(url,{kind:'html'});const ad=parseDetail(source.id,html,url);if(!ad||ad.inactive){skipped++;continue;}try{normalizeListing(ad,source);}catch{skipped++;continue;}listings.push(ad);}
+  for(const url of selected){const html=await request(url,{kind:'html'});const ad=parseDetail(source.id,html,url);if(ad?.excluded)store.excludeListing(source.id+':'+ad.id);if(!ad||ad.inactive||ad.excluded){skipped++;continue;}try{normalizeListing(ad,source);}catch{skipped++;continue;}listings.push(ad);}
   const counts=store.importSnapshot(source,{schemaVersion:1,complete:false,listings});const coverage={...counts,at:Date.now(),received:selected.length,imported:listings.length,skipped};store.setSetting(key,coverage);store.setSetting('coverage:'+source.id,coverage);store.sourceStatus(source.id,null,true);return coverage;
 }
 async function verifyHTMLSource(store,source,{request=requestJSON,limit=2}={}){
   let removed=0,checked=0;const rows=store.rows('SELECT * FROM listings WHERE source_id=? AND active=1 ORDER BY last_seen LIMIT ?',[source.id,limit]);
-  for(const row of rows){const previous=JSON.parse(row.data);try{const html=await request(previous.url,{kind:'html'});const ad=parseDetail(source.id,html,previous.url);if(ad?.inactive){store.removeListing(row.id);removed++;checked++;}else if(ad){store.importSnapshot(source,{schemaVersion:1,complete:false,listings:[{...ad,publishedAt:previous.publishedAt}]});checked++;}}catch(e){if(e.status===404||e.status===410){store.removeListing(row.id);removed++;}else break;}}
+  for(const row of rows){const previous=JSON.parse(row.data);try{const html=await request(previous.url,{kind:'html'});const ad=parseDetail(source.id,html,previous.url);if(ad?.excluded){store.excludeListing(row.id);removed++;checked++;}else if(ad?.inactive){store.removeListing(row.id);removed++;checked++;}else if(ad){store.importSnapshot(source,{schemaVersion:1,complete:false,listings:[{...ad,publishedAt:previous.publishedAt}]});checked++;}}catch(e){if(e.status===404||e.status===410){store.removeListing(row.id);removed++;}else break;}}
   return {removed,checked};
 }
 module.exports={parseBytbilDetail,parseWaykeDetail,listLinks,listURL,fetchHTMLSource,verifyHTMLSource,parseDetail};

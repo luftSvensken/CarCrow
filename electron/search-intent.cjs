@@ -37,7 +37,8 @@ function userIntent(texts,ui={},facets=[]){
   if(/(?:manuell eller automat|automat eller manuell|växellåda spelar ingen roll|alla växellådor)/i.test(text))delete out.gearbox;
   if(/(?:miltal spelar ingen roll|ingen milgräns)/i.test(text)){delete out.maxMileage;delete out.minMileage;}
   if(/(?:årsmodell spelar ingen roll|alla årsmodeller)/i.test(text)){delete out.minYear;delete out.maxYear;}
-  const negative=normalize(text),rejectedModels=(out.models||[]).filter(m=>new RegExp('(?:inte(?: ha)?|ingen|inga|utom) '+normalize(m)+'\\b').test(negative));if(rejectedModels.length){out.models=out.models.filter(m=>!rejectedModels.includes(m));if(!out.models.length)delete out.models;}
+  const negative=normalize(text),rejectedMakes=(out.makes||[]).filter(m=>new RegExp('(?:inte(?: ha)?|ingen|inga|utom) '+normalize(m)+'\\b').test(negative));if(rejectedMakes.length){out.makes=out.makes.filter(m=>!rejectedMakes.includes(m));if(!out.makes.length){delete out.makes;delete out.models;}}
+  const rejectedModels=(out.models||[]).filter(m=>new RegExp('(?:inte(?: ha)?|ingen|inga|utom) '+normalize(m)+'\\b').test(negative));if(rejectedModels.length){out.models=out.models.filter(m=>!rejectedModels.includes(m));if(!out.models.length)delete out.models;}
   if(brands.length){if(JSON.stringify(brands)!==JSON.stringify(out.makes))delete out.query;out.makes=brands;delete out.models;}
   if(models.length){if(JSON.stringify(models)!==JSON.stringify(out.models))delete out.query;out.models=models;}
   const specifics=text.match(/\b(?:business(?: edition)?|summum|momentum|inscription|dragkrok|panoramatak|skinn|m[- ]sport|r[- ]design)\b/gi);if(specifics?.length)out.query=specifics.join(' ');

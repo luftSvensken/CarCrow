@@ -1,6 +1,6 @@
 # CarCrow
 
-En svensk bilsökapp för Windows och Mac. Starten är en chatt: beskriv bilen du söker och följ när CarCrow söker, öppnar originalannonser och jämför priser. AI:n handplockar bilkort från verkliga, kontrollerade annonser.
+En svensk bilsökapp för Windows och Mac. Starten är en chatt: beskriv bilen du söker och följ när CarCrow söker, öppnar originalannonser och jämför priser. Alla hämtade annonser som uppfyller dina krav visas; AI:n prioriterar vilka du bör undersöka först.
 
 AI använder **Nemotron 3 Super (free)** med **Nemotron 3 Ultra (free)** som reserv via OpenRouter. Modellerna är fasta; appen använder inte gratisrouterns slumpmässiga val. Verktygsanrop och riktig strömning stöds. Workern tillåter endast godkända gratismodeller och sätter prisgränsen till noll. Hastighet och tillgänglighet varierar. AI-nyckeln ligger som en hemlighet i Cloudflare Worker. Appen innehåller ingen AI-nyckel, och användaren behöver varken ange nyckel eller logga in. Gratisnivåernas kvoter delas av användarna. Vid uppnådd kvot visas ett fel; appen växlar aldrig till betalning.
 
@@ -14,7 +14,15 @@ AI använder **Nemotron 3 Super (free)** med **Nemotron 3 Ultra (free)** som res
 
 Mac-paketet har en ad-hoc-signatur som förseglar hela appens innehåll. Det är inte Apple-notariserat och saknar Developer ID-certifikat. Vid första öppningen kan macOS därför kräva Systeminställningar → Integritet och säkerhet → Öppna ändå. En varning om att utvecklaren inte kan verifieras är skild från en trasig kodsignatur. Windows kan visa SmartScreen för en osignerad app.
 
-## Nytt i 0.7
+## Nytt i 0.7.1
+
+- Alla hämtade matchningar visas i chatten, även när AI:n bara motiverar några av dem. Fler källsidor hämtas när du skrollar vidare, utan ett nytt AI-anrop.
+- Billiga och nyare sökspår behåller båda sina kandidater före rankningen.
+- Tidigare avvisade märken kan väljas igen. Aktuella filter kontrolleras även när AI-svaret inte kan slutföras.
+- Månadsannonser som upptäcks i originalet inaktiveras också i den gamla annonscachen.
+- Mac-uppdateringar flyttar det verifierade paketet på samma disk i stället för att skapa en extra fullständig kopia.
+
+## Tidigare i 0.7
 
 - AI:n jämför flera sökspår och handplockar bilar utifrån dina önskemål, inom dina hårda krav.
 - Andra förslag, lägre miltal och bilfrågor fungerar direkt från urvalet.

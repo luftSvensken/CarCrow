@@ -41,6 +41,12 @@ async function dispatch(action,p={}){
     case 'agentStart':return agent.start({...p,autoLocation:store.setting('locationConsent')?store.setting('userLocation'):null,ids:p.ids?.length?p.ids:/den här|denna bil|dess (?:fel|motor)/i.test(p.text||'')&&lastOpen&&Date.now()-lastOpen.at<600000?[lastOpen.id]:[]});
     case 'agentStop':agent.stop(p.runId);return true;
     case 'marketCancel':marketRequests.get(p.requestId)?.abort();return true;
+    case 'agentPage':{
+      const requestId=p.requestId;if(typeof requestId!=='string'||!/^[-a-zA-Z0-9]{1,64}$/.test(requestId))throw new Error('Ogiltig sökbegäran.');
+      const controller=new AbortController();marketRequests.set(requestId,controller);
+      try{return await agent.more(p.chatId,{signal:controller.signal,onProgress:e=>sendMarket({...e,requestId}),onResults:result=>sendMarket({type:'results',requestId,result})});}
+      finally{marketRequests.delete(requestId);}
+    }
     case 'marketStart':
     case 'marketPage':{
       const filters=require('./search-intent.cjs').manualIntent(p.filters);if(action==='marketStart'&&p.track)store.recordPreference('search',{filters});

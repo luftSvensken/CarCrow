@@ -1,7 +1,7 @@
 const {_electron:electron}=require('playwright'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {Store}=require('../electron/core.cjs'),{seedDemo}=require('../electron/demo.cjs'),{CarAgent}=require('../electron/agent.cjs');
 (async()=>{
- const data=fs.mkdtempSync(path.join(os.tmpdir(),'carcrow-ui07-')),output=process.env.CARCROW_SCREENSHOTS||path.resolve('test-results/ui07');fs.mkdirSync(output,{recursive:true});const report={version:'0.7.0',checks:[],status:'running'};let app,page;
+ const data=fs.mkdtempSync(path.join(os.tmpdir(),'carcrow-ui07-')),output=process.env.CARCROW_SCREENSHOTS||path.resolve('test-results/ui07');fs.mkdirSync(output,{recursive:true});const report={version:require('../package.json').version,checks:[],status:'running'};let app,page;
  const check=n=>{report.checks.push(n);console.log(n);};
  try{
   const s=await Store.create(path.join(data,'carcrow.sqlite'));seedDemo(s);const cars=s.search({},true).items.slice(0,4),a=new CarAgent({store:s,demo:()=>true,key:()=>null,emit:()=>{}});a.save({id:'ux07',title:'Mitt testurval',messages:[{id:'u',role:'user',text:'BMW automat max 150000 kr'},{id:'a',role:'assistant',text:'Här är mitt urval.',status:'done'}],context:[],cars,filters:{makes:['BMW'],gearbox:'Automat',maxPrice:150000},userFilters:{}});s.db.close();

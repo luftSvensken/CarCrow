@@ -1,13 +1,17 @@
 const {normalize}=require('./search-query.cjs');
 const {saleIssue}=require('./sale-quality.cjs');
 function preferences(texts=[],seeds=[]){
- const text=normalize(texts.join(' '));return {
+ const text=normalize(texts.join(' ')),excludedMakes=new Set();
+ // Apply choices in conversation order. A later mention or "all makes"
+ // releases an earlier rejection, including when both occur in one message.
+ for(const message of texts){const value=normalize(message);if(/alla marken|vilket marke som helst/.test(value))excludedMakes.clear();for(const make of require('./search-query.cjs').makes){const name=normalize(make);for(const match of value.matchAll(new RegExp('\\b'+name+'\\b','g'))){if(/(?:inte(?: ha)?|ingen|inga|utom) $/.test(value.slice(0,match.index)))excludedMakes.add(make);else excludedMakes.delete(make);}}}
+ return {
   first:/forsta bil|nyborjare|pendl|billig.*(?:aga|drift)|lag.*(?:drift|kostnad)/.test(text),
   family:/familj|barn|rymlig|stor bagage|barnvagn/.test(text),
   sporty:/sportig|rolig|kor(glad|kansla)|korupplevelse/.test(text),
   project:/projektbil|reparationsobjekt|reservdel|mek(a|projekt)/.test(text),
   lowMileage:/lagre miltal|lagt miltal|farre mil/.test(texts.at(-1)?normalize(texts.at(-1)):''),
-  excludedMakes:require('./search-query.cjs').makes.filter(m=>new RegExp('(?:inte(?: ha)?|ingen|inga|utom) '+normalize(m)+'\\b').test(text)),
+  excludedMakes:[...excludedMakes],
   seeds:seeds.map(c=>({make:c.make,model:c.model,bodyType:c.bodyType,price:c.price,fuel:c.fuel,gearbox:c.gearbox}))
  };
 }

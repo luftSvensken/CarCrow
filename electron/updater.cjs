@@ -17,6 +17,15 @@ const run=(command,args)=>new Promise((resolve,reject)=>execFile(command,args,(e
 async function verifiedFile(file,{size,sha256}){
  try{const stat=fs.lstatSync(file);if(!stat.isFile()||stat.size!==size)return false;const hash=crypto.createHash('sha256');for await(const chunk of fs.createReadStream(file))hash.update(chunk);return hash.digest('hex')===sha256;}catch{return false;}
 }
+// Most Mac installations share a volume with userData. Move the verified
+// bundle there instead of duplicating hundreds of MB before replacement.
+function stageMacBundle(source,incoming,io=fs){
+ try{io.renameSync(source,incoming);}catch(error){
+  if(error.code!=='EXDEV')throw error;
+  try{io.cpSync(source,incoming,{recursive:true,verbatimSymlinks:true,mode:fs.constants.COPYFILE_FICLONE});}
+  catch(copyError){io.rmSync(incoming,{recursive:true,force:true});throw copyError;}
+ }
+}
 class Updater {
  constructor({app,changed=()=>{},request=requestJSON,downloadFile=download}){Object.assign(this,{app,changed,request,downloadFile});this.root=path.join(app.getPath('userData'),'updates');this.state={current:app.getVersion(),status:'idle',progress:0};this.release=null;this.controller=null;try{const result=JSON.parse(fs.readFileSync(path.join(this.root,'result.json'),'utf8'));if(!result.ok){this.state.status='error';this.state.error=result.error||'Uppdateringen misslyckades; den tidigare appen har återställts.';}fs.rmSync(path.join(this.root,'result.json'),{force:true});}catch{}}
  public(){return {...this.state,automatic:true,repository:'https://github.com/'+REPO};}
@@ -46,7 +55,7 @@ class Updater {
   const stage=fs.mkdtempSync(path.join(this.root,'stage-'));await run('/usr/bin/ditto',['-x','-k',file,stage]);const source=path.join(stage,'CarCrow.app');const meta=path.join(source,'Contents/Info.plist');
   const id=String(await run('/usr/libexec/PlistBuddy',['-c','Print :CFBundleIdentifier',meta])).trim(),built=String(await run('/usr/libexec/PlistBuddy',['-c','Print :CFBundleShortVersionString',meta])).trim();if(id!=='se.carcrow.desktop'||built!==version)throw new Error('Uppdateringen innehåller fel app eller version.');
   const sourceRoot=fs.realpathSync(source),visit=dir=>{for(const name of fs.readdirSync(dir)){const f=path.join(dir,name),stat=fs.lstatSync(f);if(stat.isSymbolicLink()){const relative=path.relative(sourceRoot,fs.realpathSync(f));if(relative==='..'||relative.startsWith('..'+path.sep)||path.isAbsolute(relative))throw new Error('Uppdateringen innehåller en ogiltig fillänk.');}else if(stat.isDirectory())visit(f);}};visit(source);
-  const incoming=path.join(path.dirname(target),'.CarCrow-next-'+crypto.randomUUID());fs.cpSync(source,incoming,{recursive:true,verbatimSymlinks:true});const config={pid:process.pid,target,incoming,backup:target+'.previous',ready:path.join(this.root,'ready'),result:path.join(this.root,'result.json'),nonce:crypto.randomUUID(),timeout:60000,stage,archive:file,quitAfter};fs.rmSync(config.ready,{force:true});const configFile=path.join(this.root,'install.json'),helper=path.join(this.root,'update-helper.cjs');fs.writeFileSync(configFile,JSON.stringify(config),{mode:0o600});fs.copyFileSync(path.join(__dirname,'update-helper.cjs'),helper);const child=spawn(process.execPath,[helper,configFile],{detached:true,stdio:'ignore',env:{...process.env,ELECTRON_RUN_AS_NODE:'1'}});await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});child.unref();
+  const incoming=path.join(path.dirname(target),'.CarCrow-next-'+crypto.randomUUID());stageMacBundle(source,incoming);const config={pid:process.pid,target,incoming,backup:target+'.previous',ready:path.join(this.root,'ready'),result:path.join(this.root,'result.json'),nonce:crypto.randomUUID(),timeout:60000,stage,archive:file,quitAfter};fs.rmSync(config.ready,{force:true});const configFile=path.join(this.root,'install.json'),helper=path.join(this.root,'update-helper.cjs');fs.writeFileSync(configFile,JSON.stringify(config),{mode:0o600});fs.copyFileSync(path.join(__dirname,'update-helper.cjs'),helper);const child=spawn(process.execPath,[helper,configFile],{detached:true,stdio:'ignore',env:{...process.env,ELECTRON_RUN_AS_NODE:'1'}});await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});child.unref();
  }
  async prepareWindows(file,{quitAfter=false}={}){
   if(!this.app.isPackaged)throw new Error('Installera uppdateringen i den installerade CarCrow-appen.');const installer=path.join(this.root,'CarCrow-Update.exe');fs.renameSync(file,installer);const config={pid:process.pid,exe:process.execPath,installer,ready:path.join(this.root,'ready'),result:path.join(this.root,'result.json'),nonce:crypto.randomUUID(),timeout:60000,quitAfter};
@@ -62,7 +71,7 @@ class Updater {
 
  acknowledge(){const configFile=path.join(this.root,'install.json');if(!fs.existsSync(configFile))return;try{const config=JSON.parse(fs.readFileSync(configFile,'utf8'));const at=process.argv.indexOf('--carcrow-update-check');if(at>=0&&process.argv[at+1]===config.nonce){fs.writeFileSync(config.ready,config.nonce,{mode:0o600});fs.writeFileSync(path.join(this.root,'running.json'),JSON.stringify({pid:process.pid,version:this.app.getVersion()}),{mode:0o600});fs.rmSync(configFile,{force:true});}}catch{}}
 }
-module.exports={Updater,newer,assetName,digest,safeDownloadURL,download,verifiedFile};
+module.exports={Updater,newer,assetName,digest,safeDownloadURL,download,verifiedFile,stageMacBundle};
 
 function windowsScript(c){
  const quote=s=>"'"+String(s).replaceAll("'","''")+"'",installPath=path.dirname(c.exe),backup=path.join(path.dirname(installPath),'.CarCrow-previous-'+c.nonce),failed=backup+'-failed';
